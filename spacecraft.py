@@ -5,6 +5,7 @@ STATE_IN_FLIGHT = 1
 STATE_ENDED = 2
 WORLD_SIZE = 600
 
+
 class Environment:
 
     def __init__(self, gravity=-9.81, time_step_size=1/30):
@@ -16,7 +17,7 @@ class Environment:
         self.launch_pad = (470, self.ground_line)
         self.landing_area = (100, self.ground_line)
         self.moment = self.mass * 1/12 * (self.height ** 2 + self.width ** 2)
-        
+
         # Distance from engine to center of mass
         self.d_engine_com = 20
 
@@ -33,6 +34,7 @@ class Environment:
         self.reset()
 
     def reset(self):
+        self.steps = 0
         self.position = (self.launch_pad[0],
                          self.launch_pad[1] + self.height//4)
         self.velocity = (0.0, 0.0)
@@ -144,6 +146,7 @@ class Environment:
         x_velocity = self.velocity[0] + x_velocity_change_thrust
         y_velocity = self.velocity[1] + \
             y_velocity_gravity + y_velocity_change_thrust
+
         angular_velocity = self.angular_velocity + angular_velocity_change_thrust
 
         # Update velocity, angular velocity, angle and position of vehicle
@@ -161,6 +164,7 @@ class Environment:
     def step(self, action):
         if self.state == STATE_LAUNCH:
             self._perform_action(action)
+            self.steps += 1
 
             if self._get_y_velocity() <= 0:
                 return
@@ -176,6 +180,8 @@ class Environment:
             if self.has_collided:
                 self.thrust_level = 0
                 self.state = STATE_ENDED
+
+            self.steps += 1
 
         elif self.state == STATE_ENDED:
             return

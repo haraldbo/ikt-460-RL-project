@@ -97,15 +97,23 @@ class SpacecraftRenderer:
                 e.position[0], 600 - e.position[1]), radius=1)
 
 
-class BackgroundRenderer:
+class EnvironmentRenderer:
 
     def render(self, window: pygame.Surface, environment: Environment):
         window.fill((108, 137, 144))  # Sky color
+
         window.fill(
             (160, 140, 100),  # Ground color
             (0, window.get_height() - environment.ground_line,
              window.get_width(), window.get_height())
         )
+
+        r = 32
+        landing_area = environment.landing_area
+        pygame.draw.circle(
+            window, (0, 255, 0), (landing_area[0] + r, window.get_height() - landing_area[1]), radius=1)
+        pygame.draw.circle(
+            window, (0, 255, 0), (landing_area[0] - r, window.get_height() - landing_area[1]), radius=1)
 
 
 class InfoRenderer:
@@ -259,8 +267,8 @@ def start_visualization(initial_environment: Environment, agent: Agent, fps=100,
     pygame.display.set_caption("Spacecraft control")
 
     jet_renderer = RocketJetRenderer()
-    spacecraft_renderer = SpacecraftRenderer(render_collision_vertices=True)
-    background_renderer = BackgroundRenderer()
+    spacecraft_renderer = SpacecraftRenderer(render_collision_vertices=False)
+    background_renderer = EnvironmentRenderer()
     info_renderer = InfoRenderer(font)
     explosion_renderer = ExplosionRenderer()
     dust_renderer = DustRenderer()
@@ -317,8 +325,9 @@ def start_visualization(initial_environment: Environment, agent: Agent, fps=100,
             "Angular velocity": round(environment.angular_velocity, 3),
             "Thrust level": environment.thrust_level,
             "Gimbal": environment.gimbal_level,
+            "Steps": environment.steps,
             "Flight ended": environment.flight_has_ended(),
-            "FPS": round(clock.get_fps(), 0)
+            "FPS": round(clock.get_fps(), 0),
         })
 
         if save_animation_frames:
