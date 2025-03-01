@@ -1,18 +1,9 @@
 import numpy as np
 
-
-ACTION_INCREASE_THRUST = 0
-ACTION_DECREASE_THRUST = 1
-ACTION_GIMBAL_LEFT = 2
-ACTION_GIMBAL_RIGHT = 3
-ACTION_DO_NOTHING = 4
-
 STATE_LAUNCH = 0
 STATE_IN_FLIGHT = 1
 STATE_ENDED = 2
-
 WORLD_SIZE = 600
-
 
 class Environment:
 
@@ -22,19 +13,23 @@ class Environment:
         self.height = 64.0
         self.mass = 500
         self.ground_line = WORLD_SIZE - 467
-        self.launch_pad = (423, self.ground_line)
-        self.landing_area = (123, self.ground_line)
+        self.launch_pad = (470, self.ground_line)
+        self.landing_area = (100, self.ground_line)
         self.moment = self.mass * 1/12 * (self.height ** 2 + self.width ** 2)
-        self.d_engine_com = 20  # Distance from engine to center of mass
+        
+        # Distance from engine to center of mass
+        self.d_engine_com = 20
+
         self.time_step_size = time_step_size
+
         self.max_engine_gimbal_angle = np.pi/8
 
         # Works in the opposite direction of gravitational force
         self.max_thrust = -2 * self.mass * gravity
         self.min_thrust = -0.7 * self.mass * gravity
 
-        self.n_thrust_levels = 10
-        self.n_gimbal_angles = 5  # Number of angle settings for each side
+        self.max_thrust_level = 10  # Number of angle settings for each side
+        self.max_gimbal_level = 5
         self.reset()
 
     def reset(self):
@@ -49,8 +44,10 @@ class Environment:
         self.thrust_level = 0  # from 0 to 6
         self.gimbal_level = 0  # from -6 to 6
 
-        self.action_space = [ACTION_INCREASE_THRUST, ACTION_DECREASE_THRUST,
-                             ACTION_GIMBAL_LEFT, ACTION_GIMBAL_RIGHT, ACTION_DO_NOTHING]
+        self.action_space = []
+        for gimbal_action in range(-1, 2):
+            for thrust_action in range(-1, 2):
+                self.action_space.append((gimbal_action, thrust_action))
 
         self.state = STATE_LAUNCH
 
@@ -67,14 +64,14 @@ class Environment:
         return -np.pi/2 + self.get_engine_local_angle() + self.angle
 
     def get_engine_local_angle(self):
-        return (self.gimbal_level / self.n_gimbal_angles) * self.max_engine_gimbal_angle
+        return (self.gimbal_level / self.max_gimbal_level) * self.max_engine_gimbal_angle
 
     def _get_thrust_velocity_change(self):
         theta = self.get_engine_absolute_angle()
 
         if self.thrust_level > 0:
             thrust = self.min_thrust + (self.thrust_level-1) * \
-                (self.max_thrust - self.min_thrust) / (self.n_thrust_levels-1)
+                (self.max_thrust - self.min_thrust) / (self.max_thrust_level-1)
         else:
             thrust = 0
 
@@ -107,22 +104,6 @@ class Environment:
 
         self.has_collided = has_collided
 
-    def increase_thrust(self):
-        if self.thrust_level < self.n_thrust_levels:
-            self.thrust_level += 1
-
-    def decrease_thrust(self):
-        if self.thrust_level > 1:
-            self.thrust_level -= 1
-
-    def gimbal_right(self):
-        if self.gimbal_level > -self.n_gimbal_angles:
-            self.gimbal_level -= 1
-
-    def gimbal_left(self):
-        if self.gimbal_level < self.n_gimbal_angles:
-            self.gimbal_level += 1
-
     def get_distance_to_landing_site(self):
         return np.sqrt((self.position[0] - self.landing_area[0]) ** 2 + (self.position[1] - self.landing_area[1]) ** 2)
 
@@ -141,14 +122,13 @@ class Environment:
     def _perform_action(self, action):
         if action not in self.action_space:
             raise ValueError(f"Invalid action {action}")
-        if action == ACTION_INCREASE_THRUST:
-            self.increase_thrust()
-        elif action == ACTION_DECREASE_THRUST:
-            self.decrease_thrust()
-        elif action == ACTION_GIMBAL_LEFT:
-            self.gimbal_left()
-        elif action == ACTION_GIMBAL_RIGHT:
-            self.gimbal_right()
+
+        self.gimbal_level = max(-self.max_gimbal_level, min(
+            self.gimbal_level + action[0], self.max_gimbal_level))
+
+        min_thrust_level = 1 if self.has_lifted_off() else 0
+        self.thrust_level = max(
+            min_thrust_level, min(self.thrust_level + action[1], self.max_thrust_level))
 
     def _get_y_velocity(self):
         y_velocity_gravity = self.gravity * self.time_step_size

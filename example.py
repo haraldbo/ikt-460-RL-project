@@ -1,5 +1,5 @@
 from spacecraft_visualization import start_visualization, Agent
-from spacecraft import Environment, ACTION_DO_NOTHING, ACTION_INCREASE_THRUST, ACTION_GIMBAL_LEFT, ACTION_GIMBAL_RIGHT, ACTION_DECREASE_THRUST
+from spacecraft import Environment
 import pygame
 
 
@@ -14,7 +14,7 @@ class HumanPlayerAgent(Agent):
             self.next_action = None
             return action
 
-        return ACTION_DO_NOTHING
+        return (0, 0)
 
     def render(self, window: pygame.Surface):
         pass
@@ -22,13 +22,13 @@ class HumanPlayerAgent(Agent):
     def handle_event(self, event: pygame.event.Event):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_UP:
-                self.next_action = ACTION_INCREASE_THRUST
+                self.next_action = (0, 1)
             if event.key == pygame.K_LEFT:
-                self.next_action = ACTION_GIMBAL_LEFT
+                self.next_action = (1, 0)
             if event.key == pygame.K_RIGHT:
-                self.next_action = ACTION_GIMBAL_RIGHT
+                self.next_action = (-1, 0)
             if event.key == pygame.K_DOWN:
-                self.next_action = ACTION_DECREASE_THRUST
+                self.next_action = (0, -1)
 
     def reset(self):
         pass

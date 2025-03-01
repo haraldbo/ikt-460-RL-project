@@ -76,7 +76,7 @@ class RocketJetRenderer:
                 dest[0] = flame_end[0] + np.random.randint(-2, 2)
                 dest[1] = 600 - e.ground_line
 
-            jet_width = int(1 + 3 * e.thrust_level/e.n_thrust_levels)
+            jet_width = int(1 + 3 * e.thrust_level/e.max_thrust_level)
             pygame.draw.line(window, color, src, dest, width=jet_width)
 
 
@@ -95,15 +95,6 @@ class SpacecraftRenderer:
 
             pygame.draw.circle(window, (0, 255, 0), center=(
                 e.position[0], 600 - e.position[1]), radius=1)
-
-
-class Cloud:
-
-    def __init__(self):
-        self.position = (
-            np.random.randint(5, 100),
-            np.random.randint(100, 500)
-        )
 
 
 class BackgroundRenderer:
@@ -134,7 +125,6 @@ class InfoRenderer:
 class DustRenderer:
 
     def __init__(self):
-
         # Using a circular buffer
         self.history = self._init_history()
         self.frame = 0
@@ -292,6 +282,7 @@ def start_visualization(initial_environment: Environment, agent: Agent, fps=100,
                     print("Reseting")
                     environment = copy.copy(initial_environment)
                     explosion_renderer.reset()
+                    dust_renderer.reset()
                     animation_frames.clear()
                     agent.reset()
                     continue
