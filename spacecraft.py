@@ -39,6 +39,12 @@ class Environment:
 
         # Number of angle settings for each side
         self.max_gimbal_level = MAX_GIMBAL_LEVEL
+
+        self.action_space = []
+        for gimbal_action in range(-1, 2):
+            for thrust_action in range(-1, 2):
+                self.action_space.append((gimbal_action, thrust_action))
+
         self.reset()
 
     def reset(self):
@@ -53,11 +59,6 @@ class Environment:
 
         self.thrust_level = 0  # from 0 to 6
         self.gimbal_level = 0  # from -6 to 6
-
-        self.action_space = []
-        for gimbal_action in range(-1, 2):
-            for thrust_action in range(-1, 2):
-                self.action_space.append((gimbal_action, thrust_action))
 
         self.state = STATE_LAUNCH
 
@@ -175,10 +176,11 @@ class Environment:
             self.steps += 1
 
             if self._get_y_velocity() <= 0:
-                return
+                return self.state == STATE_ENDED
 
             self.state = STATE_IN_FLIGHT
             self._update_flight_variables()
+            return self.state == STATE_ENDED
 
         elif self.state == STATE_IN_FLIGHT:
             self._perform_action(action)
@@ -190,8 +192,9 @@ class Environment:
                 self.state = STATE_ENDED
 
             self.steps += 1
+            return self.state == STATE_ENDED
 
         elif self.state == STATE_ENDED:
-            return
+            return True
         else:
             raise ValueError(f"Unrecognized state {self.state}")
