@@ -100,7 +100,7 @@ class SpacecraftRenderer:
 class EnvironmentRenderer:
 
     def render(self, window: pygame.Surface, environment: Environment):
-        window.fill((108, 137, 144))  # Sky color
+        window.fill((10, 0, 20))  # Sky color
 
         window.fill(
             (160, 140, 100),  # Ground color

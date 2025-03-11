@@ -5,6 +5,12 @@ STATE_IN_FLIGHT = 1
 STATE_ENDED = 2
 WORLD_SIZE = 600
 
+MAX_GIMBAL_LEVEL = 5
+MIN_GIMBAL_LEVEL = -5
+
+MAX_THRUST_LEVEL = 10
+MIN_THRUST_LEVEL = 0
+
 
 class Environment:
 
@@ -29,8 +35,10 @@ class Environment:
         self.max_thrust = -2 * self.mass * gravity
         self.min_thrust = -0.7 * self.mass * gravity
 
-        self.max_thrust_level = 10  # Number of angle settings for each side
-        self.max_gimbal_level = 5
+        self.max_thrust_level = MAX_THRUST_LEVEL
+
+        # Number of angle settings for each side
+        self.max_gimbal_level = MAX_GIMBAL_LEVEL
         self.reset()
 
     def reset(self):
