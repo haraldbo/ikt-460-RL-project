@@ -4,9 +4,13 @@ import math
 import gymnasium as gym
 from gymnasium import spaces
 from stable_baselines3.common.env_checker import check_env
+from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3 import PPO
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import SubprocVecEnv
 import numpy as np
 from spacecraft_visualization import start_visualization, Agent
+import pygame
 
 # https://stable-baselines3.readthedocs.io/en/master/guide/custom_env.html
 # "To use the RL baselines with custom environments, they just need to follow the gymnasium interface."
@@ -15,7 +19,7 @@ from spacecraft_visualization import start_visualization, Agent
 FPS = 1
 
 
-class SpacecraftGymEnv(gym.Env):
+class HoveringSpacecraftGymEnv(gym.Env):
 
     metadata = {
         "render_modes": ["human", "rgb_array"],
@@ -51,8 +55,8 @@ class SpacecraftGymEnv(gym.Env):
         max_velocity = 100
 
         low = np.array([
-            -WORLD_SIZE,  # x coordinate
-            -WORLD_SIZE,  # y coordinate
+            -WORLD_SIZE,  # delta x
+            -WORLD_SIZE,  # delta y
             -max_velocity,  # x velocity
             -max_velocity,  # y velocity
             -1,  # cos angle
@@ -63,8 +67,8 @@ class SpacecraftGymEnv(gym.Env):
         ])
 
         high = np.array([
-            WORLD_SIZE,  # x coordinate
-            WORLD_SIZE,  # y coordinate
+            WORLD_SIZE,  # delta x
+            WORLD_SIZE,  # delta y
             max_velocity,  # x velocity
             max_velocity,  # y velocity
             1,  # cos angle
@@ -75,11 +79,12 @@ class SpacecraftGymEnv(gym.Env):
         ])
 
         self.observation_space = spaces.Box(low, high, dtype=np.float64)
+        self.reset()
 
     def _get_obs(self):
         state = [
-            self.env.position[0] - self.point[0],  # x coordinate
-            self.env.position[1] - self.point[1],  # y coordinate
+            self.env.position[0] - self.point[0],  # delta x
+            self.env.position[1] - self.point[1],  # delta y
             self.env.velocity[0],  # x velocity
             self.env.velocity[1],  # y velocity
             np.cos(self.env.angle),  # cos angle
@@ -140,10 +145,9 @@ class PPOHoveringAgent(Agent):
         self.point = point
 
     def get_action(self, env: Environment):
-        self.point = (self.point[0] - 0.1, self.point[1] + 0.1)
         state = np.array([
-            env.position[0] - self.point[0],  # x coordinate
-            env.position[1] - self.point[1],  # y coordinate
+            env.position[0] - self.point[0],  # delta x
+            env.position[1] - self.point[1],  # delta y
             env.velocity[0],  # x velocity
             env.velocity[1],  # y velocity
             np.cos(env.angle),  # cos angle
@@ -155,19 +159,49 @@ class PPOHoveringAgent(Agent):
         action_idx, _ = self.model.predict(state, deterministic=True)
         return env.action_space[action_idx.item()]
 
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN:
+            y_change = 0
+            x_change = 0
+            change_amount = 3
+            if event.key == pygame.K_UP:
+                y_change += change_amount
+            if event.key == pygame.K_DOWN:
+                y_change -= change_amount
+            if event.key == pygame.K_LEFT:
+                x_change -= change_amount
+            if event.key == pygame.K_RIGHT:
+                x_change += change_amount
+
+            self.point = (self.point[0] + x_change, self.point[1] + y_change)
+
+    def render(self, window):
+        pygame.draw.circle(window, color=(0, 255, 0), center=(
+            self.point[0], WORLD_SIZE-self.point[1]), radius=2)
+
 
 def train_agent():
-    env = SpacecraftGymEnv(point=(400, 400))
-    check_env(env)
+    # env = HoveringSpacecraftGymEnv(point=(400, 400))
+    env = make_vec_env(lambda: HoveringSpacecraftGymEnv(
+        point=(400, 400)), n_envs=8, vec_env_cls=SubprocVecEnv)
+    # check_env(env)
+
+    checkpoint_callback = CheckpointCallback(
+        save_freq=10_000,
+        save_path="./saves/",
+        name_prefix="ppo_spacecraft",
+        save_replay_buffer=True,
+        save_vecnormalize=True,
+    )
 
     model = PPO("MlpPolicy", env, verbose=1, batch_size=128,
-                n_steps=128 * 128, device="cpu", tensorboard_log="./tensorboard")
-    model.learn(total_timesteps=1_000_000)
-    model.save("ppo_spacecraft")
+                n_steps=128 * 128, device="cpu", tensorboard_log="./tensorboard_logs")
+    model.learn(total_timesteps=1000_000_000, callback=checkpoint_callback)
+    # model.save("ppo_spacecraft")
 
 
 def test_agent():
-    model = PPO.load("ppo_spacecraft", device="cpu")
+    model = PPO.load("./logs/ppo_spacecraft_17760000_steps", device="cpu")
     agent = PPOHoveringAgent(model, (470, 160))
     env = Environment()
     start_visualization(env, fps=60, agent=agent,
