@@ -1,4 +1,4 @@
-from spacecraft import Environment, WORLD_SIZE, MAX_GIMBAL_LEVEL, MAX_THRUST_LEVEL, MIN_GIMBAL_LEVEL, MIN_THRUST_LEVEL
+from spacecraft import Environment, WORLD_SIZE, MAX_GIMBAL_LEVEL, MAX_THRUST_LEVEL, MIN_GIMBAL_LEVEL, MIN_THRUST_LEVEL, STATE_LAUNCH
 from copy import copy
 import math
 import gymnasium as gym
@@ -22,8 +22,9 @@ class SpacecraftGymEnv(gym.Env):
         "render_fps": FPS,
     }
 
-    def __init__(self):
+    def __init__(self, point: tuple):
         super().__init__()
+        self.point = point
         self.env = Environment()
 
         """
@@ -37,8 +38,8 @@ class SpacecraftGymEnv(gym.Env):
 
         """
         The observation:
-            - x coordinate
-            - y coordinate
+            - delta x: distance from x position to target x along the x axis
+            - delta y: distance from y position to target y along the y axis
             - x velocity
             - y velocity
             - sin(angle)
@@ -50,8 +51,8 @@ class SpacecraftGymEnv(gym.Env):
         max_velocity = 100
 
         low = np.array([
-            -100,  # x coordinate
-            -100,  # y coordinate
+            -WORLD_SIZE,  # x coordinate
+            -WORLD_SIZE,  # y coordinate
             -max_velocity,  # x velocity
             -max_velocity,  # y velocity
             -1,  # cos angle
@@ -62,8 +63,8 @@ class SpacecraftGymEnv(gym.Env):
         ])
 
         high = np.array([
-            WORLD_SIZE + 100,  # x coordinate
-            WORLD_SIZE + 100,  # y coordinate
+            WORLD_SIZE,  # x coordinate
+            WORLD_SIZE,  # y coordinate
             max_velocity,  # x velocity
             max_velocity,  # y velocity
             1,  # cos angle
@@ -77,8 +78,8 @@ class SpacecraftGymEnv(gym.Env):
 
     def _get_obs(self):
         state = [
-            self.env.position[0],  # x coordinate
-            self.env.position[1],  # y coordinate
+            self.env.position[0] - self.point[0],  # x coordinate
+            self.env.position[1] - self.point[1],  # y coordinate
             self.env.velocity[0],  # x velocity
             self.env.velocity[1],  # y velocity
             np.cos(self.env.angle),  # cos angle
@@ -89,9 +90,10 @@ class SpacecraftGymEnv(gym.Env):
         ]
         return np.array(state, dtype=np.float64)
 
-    def _calculate_reward(self, current_env, previous_env):
-        point = (400, 400)
-        return -math.sqrt((current_env.position[0] - point[0]) ** 2 + (current_env.position[1] - point[1]) ** 2)
+    def _calculate_reward(self, current_env: Environment, previous_env: Environment):
+        # Closer is better
+        return 1/(math.sqrt((current_env.position[0] - self.point[0]) ** 2 + (
+            current_env.position[1] - self.point[1]) ** 2) + 1)
 
     def step(self, action_idx):
         action = self.env.action_space[action_idx]
@@ -100,7 +102,7 @@ class SpacecraftGymEnv(gym.Env):
         observation = self._get_obs()
         truncated = self.env.steps > 1000
         if terminated:
-            reward = -1_000_000
+            reward = -10
         else:
             reward = self._calculate_reward(self.env, previous_env)
         info = {}
@@ -109,6 +111,16 @@ class SpacecraftGymEnv(gym.Env):
 
     def reset(self, seed=None, options=None):
         self.env.reset()
+        self.env.position = (
+            self.point[0] + np.random.randint(-20, 20), self.point[1] + np.random.randint(-20, 20))
+
+        self.env.velocity = (np.random.uniform(-5, 5),
+                             np.random.uniform(-5, 5))
+        self.env.angular_velocity = np.random.uniform(-0.2, 0.2)
+        self.env.thrust_level = np.random.randint(
+            MIN_THRUST_LEVEL, MAX_THRUST_LEVEL)
+        self.env.gimbal_level = np.random.randint(
+            MIN_GIMBAL_LEVEL, MAX_GIMBAL_LEVEL)
         info = {}
         observation = self._get_obs()
         return observation, info
@@ -120,16 +132,18 @@ class SpacecraftGymEnv(gym.Env):
         pass
 
 
-class PPOAgent(Agent):
+class PPOHoveringAgent(Agent):
 
-    def __init__(self, model: PPO):
+    def __init__(self, model: PPO, point: tuple):
         super().__init__()
         self.model = model
+        self.point = point
 
     def get_action(self, env: Environment):
+        self.point = (self.point[0] - 0.1, self.point[1] + 0.1)
         state = np.array([
-            env.position[0],  # x coordinate
-            env.position[1],  # y coordinate
+            env.position[0] - self.point[0],  # x coordinate
+            env.position[1] - self.point[1],  # y coordinate
             env.velocity[0],  # x velocity
             env.velocity[1],  # y velocity
             np.cos(env.angle),  # cos angle
@@ -143,22 +157,23 @@ class PPOAgent(Agent):
 
 
 def train_agent():
-    env = SpacecraftGymEnv()
+    env = SpacecraftGymEnv(point=(400, 400))
     check_env(env)
 
-    model = PPO("MlpPolicy", env, verbose=1, batch_size=64, n_steps=64 * 128, device="cpu")
-    model.learn(total_timesteps=30_000)
+    model = PPO("MlpPolicy", env, verbose=1, batch_size=128,
+                n_steps=128 * 128, device="cpu", tensorboard_log="./tensorboard")
+    model.learn(total_timesteps=1_000_000)
     model.save("ppo_spacecraft")
 
 
 def test_agent():
     model = PPO.load("ppo_spacecraft", device="cpu")
-    agent = PPOAgent(model)
+    agent = PPOHoveringAgent(model, (470, 160))
     env = Environment()
-    start_visualization(env, fps=30, agent=agent,
+    start_visualization(env, fps=60, agent=agent,
                         save_animation_frames=True)
 
 
 if __name__ == "__main__":
-    #train_agent()
-    test_agent()
+    train_agent()
+    # test_agent()
