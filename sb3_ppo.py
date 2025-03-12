@@ -97,8 +97,10 @@ class HoveringSpacecraftGymEnv(gym.Env):
 
     def _calculate_reward(self, current_env: Environment, previous_env: Environment):
         # Closer is better
-        return 1/(math.sqrt((current_env.position[0] - self.point[0]) ** 2 + (
-            current_env.position[1] - self.point[1]) ** 2) + 1)
+        distance = math.sqrt((current_env.position[0] - self.point[0]) ** 2 + (
+            current_env.position[1] - self.point[1]) ** 2)
+        rotation = 20 * current_env.angular_velocity ** 2
+        return 1/(distance + rotation + 1)
 
     def step(self, action_idx):
         action = self.env.action_space[action_idx]
@@ -117,11 +119,11 @@ class HoveringSpacecraftGymEnv(gym.Env):
     def reset(self, seed=None, options=None):
         self.env.reset()
         self.env.position = (
-            self.point[0] + np.random.randint(-20, 20), self.point[1] + np.random.randint(-20, 20))
+            self.point[0] + np.random.randint(-30, 30), self.point[1] + np.random.randint(-30, 30))
 
-        self.env.velocity = (np.random.uniform(-5, 5),
-                             np.random.uniform(-5, 5))
-        self.env.angular_velocity = np.random.uniform(-0.2, 0.2)
+        self.env.velocity = (np.random.uniform(-20, 20),
+                             np.random.uniform(-20, 20))
+        self.env.angular_velocity = np.random.uniform(-0.4, 0.4)
         self.env.thrust_level = np.random.randint(
             MIN_THRUST_LEVEL, MAX_THRUST_LEVEL)
         self.env.gimbal_level = np.random.randint(
@@ -142,6 +144,7 @@ class PPOHoveringAgent(Agent):
     def __init__(self, model: PPO, point: tuple):
         super().__init__()
         self.model = model
+        self.initial_point = point
         self.point = point
 
     def get_action(self, env: Environment):
@@ -175,6 +178,9 @@ class PPOHoveringAgent(Agent):
 
             self.point = (self.point[0] + x_change, self.point[1] + y_change)
 
+    def reset(self):
+        self.point = self.initial_point
+
     def render(self, window):
         pygame.draw.circle(window, color=(0, 255, 0), center=(
             self.point[0], WORLD_SIZE-self.point[1]), radius=2)
@@ -195,13 +201,13 @@ def train_agent():
     )
 
     model = PPO("MlpPolicy", env, verbose=1, batch_size=128,
-                n_steps=128 * 128, device="cpu", tensorboard_log="./tensorboard_logs")
+                n_steps=12800, device="cpu", tensorboard_log="./tensorboard_logs")
     model.learn(total_timesteps=1000_000_000, callback=checkpoint_callback)
     # model.save("ppo_spacecraft")
 
 
 def test_agent():
-    model = PPO.load("./logs/ppo_spacecraft_17760000_steps", device="cpu")
+    model = PPO.load("./saves/ppo_spacecraft_7120000_steps", device="cpu")
     agent = PPOHoveringAgent(model, (470, 160))
     env = Environment()
     start_visualization(env, fps=60, agent=agent,
@@ -209,5 +215,5 @@ def test_agent():
 
 
 if __name__ == "__main__":
-    train_agent()
-    # test_agent()
+    # train_agent()
+    test_agent()
