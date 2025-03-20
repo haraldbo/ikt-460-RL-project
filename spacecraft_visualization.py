@@ -320,19 +320,6 @@ def start_visualization(initial_environment: Environment, agent: Agent, fps=100,
 
         agent.render(world_surface)
 
-        info_renderer.render(world_surface, {
-            "Position": (round(environment.position[0], 2), round(environment.position[1], 2)),
-            "Velocity": (round(environment.velocity[0], 2), round(environment.velocity[1], 2)),
-            "Absolute velocity": (round(environment.get_velocity(), 2)),
-            "Angle": round(environment.angle, 3),
-            "Angular velocity": round(environment.angular_velocity, 3),
-            "Thrust level": environment.thrust_level,
-            "Gimbal": environment.gimbal_level,
-            "Steps": environment.steps,
-            "Flight ended": environment.flight_has_ended(),
-            "FPS": round(clock.get_fps(), 0),
-        })
-
         if save_animation_frames:
             animation_frames.append(world_surface.copy())
 
@@ -345,6 +332,19 @@ def start_visualization(initial_environment: Environment, agent: Agent, fps=100,
         canvas = world_surface.subsurface(x, y,  crop_size, crop_size)
 
         canvas = scale(canvas, window.get_size())
+
+        info_renderer.render(canvas, {
+            "Position": (round(environment.position[0], 2), round(environment.position[1], 2)),
+            "Velocity": (round(environment.velocity[0], 2), round(environment.velocity[1], 2)),
+            "Absolute velocity": (round(environment.get_velocity(), 2)),
+            "Angle": round(environment.angle, 3),
+            "Angular velocity": round(environment.angular_velocity, 3),
+            "Thrust level": environment.thrust_level,
+            "Gimbal": environment.gimbal_level,
+            "Steps": environment.steps,
+            "Flight ended": environment.flight_has_ended(),
+            "FPS": round(clock.get_fps(), 0),
+        })
 
         window.blit(canvas, (0, 0))
         pygame.display.update()

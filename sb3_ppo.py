@@ -96,11 +96,10 @@ class HoveringSpacecraftGymEnv(gym.Env):
         return np.array(state, dtype=np.float64)
 
     def _calculate_reward(self, current_env: Environment, previous_env: Environment):
-        distance_penalty = math.sqrt((current_env.position[0] - self.point[0]) ** 2 + (
-            current_env.position[1] - self.point[1]) ** 2) * 1e-2
+        distance_penalty = current_env.get_distance_to(*self.point) * 1e-2
 
         # angle_penalty = current_env.angle ** 2
-        angle_penalty = (current_env.angle ** 2) * 1e-1
+        angle_penalty = current_env.angle ** 2
 
         return -(distance_penalty + angle_penalty)
 
@@ -109,7 +108,7 @@ class HoveringSpacecraftGymEnv(gym.Env):
         previous_env = copy(self.env)
         terminated = self.env.step(action)
         observation = self._get_obs()
-        total_steps = 50
+        total_steps = 200
         truncated = self.env.steps > total_steps
         if terminated:
             reward = -100
@@ -124,9 +123,10 @@ class HoveringSpacecraftGymEnv(gym.Env):
         self.env.position = (
             self.point[0] + np.random.randint(-40, 40), self.point[1] + np.random.randint(-40, 40))
 
-        self.env.velocity = (np.random.uniform(-10, 10),
-                             np.random.uniform(-10, 10))
-        self.env.angular_velocity = np.random.uniform(-0.2, 0.2)
+        self.env.velocity = (np.random.uniform(-15, 15),
+                             np.random.uniform(-15, 15))
+        self.env.angle = np.random.uniform(-np.pi/4, np.pi/4)
+        self.env.angular_velocity = np.random.uniform(-0.4, 0.4)
         self.env.thrust_level = np.random.randint(
             env.MIN_THRUST_LEVEL, env.MAX_THRUST_LEVEL)
         self.env.gimbal_level = np.random.randint(
@@ -218,7 +218,7 @@ def train_agent(env: Environment):
 
 
 def test_agent(env: Environment):
-    model = PPO.load("./saves/ppo_spacecraft_425000_steps", device="cpu")
+    model = PPO.load("./saves/ppo_spacecraft_915000_steps", device="cpu")
     point = (env.WORLD_SIZE//2, env.WORLD_SIZE//2)
     agent = PPOHoveringAgent(model, point)
     env.position = point
@@ -228,6 +228,6 @@ def test_agent(env: Environment):
 
 
 if __name__ == "__main__":
-    env = Environment(time_step_size=1)
+    env = Environment(time_step_size=1/2)
     # train_agent(env)
     test_agent(env)
