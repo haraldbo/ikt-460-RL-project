@@ -35,8 +35,6 @@ class Environment:
         self.max_thrust = -2 * self.mass * gravity
         self.min_thrust = -0.7 * self.mass * gravity
 
-        self.max_thrust_level = self.MAX_THRUST_LEVEL
-
         # Number of angle settings for each side
         self.max_gimbal_level = self.MAX_GIMBAL_LEVEL
 
@@ -82,7 +80,7 @@ class Environment:
 
         if self.thrust_level > 0:
             thrust = self.min_thrust + (self.thrust_level-1) * \
-                (self.max_thrust - self.min_thrust) / (self.max_thrust_level-1)
+                (self.max_thrust - self.min_thrust) / self.MAX_THRUST_LEVEL
         else:
             thrust = 0
 
@@ -137,9 +135,8 @@ class Environment:
         self.gimbal_level = max(-self.max_gimbal_level, min(
             self.gimbal_level + action[0], self.max_gimbal_level))
 
-        min_thrust_level = 1 if self.has_lifted_off() else 0
-        self.thrust_level = max(
-            min_thrust_level, min(self.thrust_level + action[1], self.max_thrust_level))
+        self.thrust_level = max(self.MIN_THRUST_LEVEL, min(
+            self.thrust_level + action[1], self.MAX_THRUST_LEVEL))
 
     def _get_y_velocity(self):
         y_velocity_gravity = self.gravity * self.time_step_size

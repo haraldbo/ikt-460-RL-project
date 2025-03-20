@@ -2,6 +2,7 @@ from spacecraft import Environment
 import numpy as np
 import pygame
 from pygame.font import Font
+from pygame.transform import scale
 from PIL import Image
 import copy
 from abc import ABC, abstractmethod
@@ -20,7 +21,7 @@ class ExplosionRenderer:
     def is_done(self):
         return self.frame >= self.max_frames
 
-    def render(self, window: pygame.Surface, e: Environment):
+    def render(self, surface: pygame.Surface, e: Environment):
         if self.frame >= self.max_frames:
             return
 
@@ -38,19 +39,19 @@ class ExplosionRenderer:
                 np.random.randint(
                     e.position[1] - radius, e.position[1] + radius)
 
-            pygame.draw.circle(window, color, center=(
+            pygame.draw.circle(surface, color, center=(
                 x, y), radius=np.random.randint(1, radius))
 
             if self.frame > 30:
-                pygame.draw.line(window, color, start_pos=(x, y), end_pos=(
+                pygame.draw.line(surface, color, start_pos=(x, y), end_pos=(
                     x+np.random.randint(-radius, radius), y + np.random.randint(-radius, radius)))
-                pygame.draw.arc(window, color, start_angle=0, stop_angle=np.random.rand(), rect=(
+                pygame.draw.arc(surface, color, start_angle=0, stop_angle=np.random.rand(), rect=(
                     (x, y), (x+np.random.randint(-radius, radius), y + np.random.randint(-radius, radius))))
 
 
 class RocketJetRenderer:
 
-    def render(self, window: pygame.Surface, e: Environment):
+    def render(self, surface: pygame.Surface, e: Environment):
         engine_angle = -np.pi/2 - e.get_engine_local_angle() + e.angle
         radius = max(14, 8 + e.thrust_level)
         for i in range(np.random.randint(5, 20)):
@@ -76,8 +77,8 @@ class RocketJetRenderer:
                 dest[0] = flame_end[0] + np.random.randint(-2, 2)
                 dest[1] = 600 - e.ground_line
 
-            jet_width = int(1 + 3 * e.thrust_level/e.max_thrust_level)
-            pygame.draw.line(window, color, src, dest, width=jet_width)
+            jet_width = int(1 + 3 * e.thrust_level/e.MAX_THRUST_LEVEL)
+            pygame.draw.line(surface, color, src, dest, width=jet_width)
 
 
 class SpacecraftRenderer:
@@ -86,34 +87,34 @@ class SpacecraftRenderer:
         self.spacecraft_img = pygame.image.load("images/spacecraft.png")
         self.render_collision_vertices = render_collision_vertices
 
-    def render(self, window: pygame.Surface, e: Environment):
+    def render(self, surface: pygame.Surface, e: Environment):
         rotated = pygame.transform.rotozoom(
             self.spacecraft_img, e.angle/(np.pi * 2) * 360, 0.5)
-        window.blit(source=rotated, dest=(
+        surface.blit(source=rotated, dest=(
             e.position[0] - rotated.get_width()/2, (600 - e.position[1] - rotated.get_height()/2)))
         if self.render_collision_vertices:
 
-            pygame.draw.circle(window, (0, 255, 0), center=(
+            pygame.draw.circle(surface, (0, 255, 0), center=(
                 e.position[0], 600 - e.position[1]), radius=1)
 
 
 class EnvironmentRenderer:
 
-    def render(self, window: pygame.Surface, environment: Environment):
-        window.fill((10, 0, 20))  # Sky color
+    def render(self, surface: pygame.Surface, environment: Environment):
+        surface.fill((10, 0, 20))  # Sky color
 
-        window.fill(
+        surface.fill(
             (160, 140, 100),  # Ground color
-            (0, window.get_height() - environment.ground_line,
-             window.get_width(), window.get_height())
+            (0, surface.get_height() - environment.ground_line,
+             surface.get_width(), surface.get_height())
         )
 
         r = 32
         landing_area = environment.landing_area
         pygame.draw.circle(
-            window, (0, 255, 0), (landing_area[0] + r, window.get_height() - landing_area[1]), radius=1)
+            surface, (0, 255, 0), (landing_area[0] + r, surface.get_height() - landing_area[1]), radius=1)
         pygame.draw.circle(
-            window, (0, 255, 0), (landing_area[0] - r, window.get_height() - landing_area[1]), radius=1)
+            surface, (0, 255, 0), (landing_area[0] - r, surface.get_height() - landing_area[1]), radius=1)
 
 
 class InfoRenderer:
@@ -121,12 +122,12 @@ class InfoRenderer:
     def __init__(self, font: Font):
         self.font = font
 
-    def render(self, window: pygame.Surface, info: dict[str, str]):
+    def render(self, surface: pygame.Surface, info: dict[str, str]):
         y_loc = 0
         for k, v in info.items():
             text = f"{k}: {v}"
             font_surface = self.font.render(text, False, (255, 255, 255))
-            window.blit(font_surface, dest=(450, 20 + y_loc))
+            surface.blit(font_surface, dest=(450, 20 + y_loc))
             y_loc += self.font.size(text)[1]
 
 
@@ -144,7 +145,7 @@ class DustRenderer:
         self.frame = 0
         self.history = self._init_history()
 
-    def _render_history(self, window: pygame.Surface, environment: Environment):
+    def _render_history(self, surface: pygame.Surface, environment: Environment):
         for k in range(len(self.history)):
             (x, y), intensity = self.history[(
                 self.frame - 1 - k) % len(self.history)]
@@ -167,7 +168,7 @@ class DustRenderer:
             color = (178 + np.random.randint(-10, 10), 163 +
                      np.random.randint(-10, 10), 132 + np.random.randint(-10, 10))
 
-            pygame.draw.line(window, color=color, start_pos=(
+            pygame.draw.line(surface, color=color, start_pos=(
                 x + x_start, 600 - y - y_start), end_pos=(x_end + x, 600 - y - y_end), width=int(min(intensity, 3)))
 
     def is_done(self):
@@ -176,7 +177,7 @@ class DustRenderer:
                 return False
         return True
 
-    def render(self, window: pygame.Surface, environment: Environment):
+    def render(self, surface: pygame.Surface, environment: Environment):
 
         engine_abs_angle = environment.get_engine_absolute_angle()
         if np.fabs(np.sin(engine_abs_angle)) < 0.1 or environment.thrust_level == 0 or np.cos(environment.angle) < 0:
@@ -196,7 +197,7 @@ class DustRenderer:
         self.history[self.frame % len(self.history)] = (
             (dust_x, dust_y), intensity)
         self.frame += 1
-        self._render_history(window, environment)
+        self._render_history(surface, environment)
 
 
 def save_animation(frames: list[pygame.Surface]):
@@ -236,7 +237,7 @@ class Agent(ABC):
         """
         pass
 
-    def render(self, window: pygame.Surface):
+    def render(self, surface: pygame.Surface):
         """
         Render something to the window. Like state variables or personal thoughts.
         """
@@ -264,6 +265,8 @@ def start_visualization(initial_environment: Environment, agent: Agent, fps=100,
 
     font: Font = pygame.font.SysFont("", size=16)
     window = pygame.display.set_mode((600, 600))
+    world_surface = pygame.Surface(window.get_size())
+
     pygame.display.set_caption("Spacecraft control")
 
     jet_renderer = RocketJetRenderer()
@@ -305,19 +308,19 @@ def start_visualization(initial_environment: Environment, agent: Agent, fps=100,
 
         environment.step(action)
 
-        background_renderer.render(window, environment)
+        background_renderer.render(world_surface, environment)
         has_exploded = spacecraft_has_exploded(environment)
         if has_exploded:
-            explosion_renderer.render(window, environment)
+            explosion_renderer.render(world_surface, environment)
         else:
             if environment.thrust_level > 0:
-                jet_renderer.render(window, environment)
-            spacecraft_renderer.render(window, environment)
-            dust_renderer.render(window, environment)
+                jet_renderer.render(world_surface, environment)
+            spacecraft_renderer.render(world_surface, environment)
+            dust_renderer.render(world_surface, environment)
 
-        agent.render(window)
+        agent.render(world_surface)
 
-        info_renderer.render(window, {
+        info_renderer.render(world_surface, {
             "Position": (round(environment.position[0], 2), round(environment.position[1], 2)),
             "Velocity": (round(environment.velocity[0], 2), round(environment.velocity[1], 2)),
             "Absolute velocity": (round(environment.get_velocity(), 2)),
@@ -331,7 +334,18 @@ def start_visualization(initial_environment: Environment, agent: Agent, fps=100,
         })
 
         if save_animation_frames:
-            animation_frames.append(window.copy())
+            animation_frames.append(world_surface.copy())
 
+        crop_size = 200
+        x = min(
+            max(environment.position[0]-crop_size//2, 0), window.get_width() - crop_size)
+        y = min(max((window.get_height(
+        ) - environment.position[1])-crop_size//2, 0), window.get_height() - crop_size)
+
+        canvas = world_surface.subsurface(x, y,  crop_size, crop_size)
+
+        canvas = scale(canvas, window.get_size())
+
+        window.blit(canvas, (0, 0))
         pygame.display.update()
         clock.tick(fps)

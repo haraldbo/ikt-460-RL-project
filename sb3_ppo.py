@@ -100,7 +100,7 @@ class HoveringSpacecraftGymEnv(gym.Env):
             current_env.position[1] - self.point[1]) ** 2) * 1e-2
 
         # angle_penalty = current_env.angle ** 2
-        angle_penalty = 0
+        angle_penalty = (current_env.angle ** 2) * 1e-1
 
         return -(distance_penalty + angle_penalty)
 
@@ -109,7 +109,7 @@ class HoveringSpacecraftGymEnv(gym.Env):
         previous_env = copy(self.env)
         terminated = self.env.step(action)
         observation = self._get_obs()
-        total_steps = 300
+        total_steps = 50
         truncated = self.env.steps > total_steps
         if terminated:
             reward = -100
@@ -122,7 +122,7 @@ class HoveringSpacecraftGymEnv(gym.Env):
     def reset(self, seed=None, options=None):
         self.env.reset()
         self.env.position = (
-            self.point[0] + np.random.randint(-30, 30), self.point[1] + np.random.randint(-30, 30))
+            self.point[0] + np.random.randint(-40, 40), self.point[1] + np.random.randint(-40, 40))
 
         self.env.velocity = (np.random.uniform(-10, 10),
                              np.random.uniform(-10, 10))
@@ -170,7 +170,7 @@ class PPOHoveringAgent(Agent):
         if event.type == pygame.KEYDOWN:
             y_change = 0
             x_change = 0
-            change_amount = 3
+            change_amount = 20
             if event.key == pygame.K_UP:
                 y_change += change_amount
             if event.key == pygame.K_DOWN:
@@ -206,14 +206,19 @@ def train_agent(env: Environment):
         save_vecnormalize=True,
     )
 
-    model = PPO("MlpPolicy", env, verbose=1, device="cpu",
-                tensorboard_log="./tensorboard_logs")
+    model = PPO(
+        "MlpPolicy", env,
+        verbose=1,
+        device="cpu",
+        tensorboard_log="./tensorboard_logs",
+        gamma=0.9
+    )
     model.learn(total_timesteps=10_000_000, callback=checkpoint_callback)
     # model.save("ppo_spacecraft")
 
 
 def test_agent(env: Environment):
-    model = PPO.load("./saves/ppo_spacecraft_710000_steps", device="cpu")
+    model = PPO.load("./saves/ppo_spacecraft_425000_steps", device="cpu")
     point = (env.WORLD_SIZE//2, env.WORLD_SIZE//2)
     agent = PPOHoveringAgent(model, point)
     env.position = point
@@ -223,6 +228,6 @@ def test_agent(env: Environment):
 
 
 if __name__ == "__main__":
-    env = Environment(time_step_size=1/5)
+    env = Environment(time_step_size=1)
     # train_agent(env)
     test_agent(env)
