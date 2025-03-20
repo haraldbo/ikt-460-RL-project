@@ -1,4 +1,4 @@
-from spacecraft import Environment, WORLD_SIZE, MAX_GIMBAL_LEVEL, MAX_THRUST_LEVEL, MIN_GIMBAL_LEVEL, MIN_THRUST_LEVEL, STATE_LAUNCH
+from spacecraft import Environment
 from copy import copy
 import math
 import gymnasium as gym
@@ -26,10 +26,10 @@ class HoveringSpacecraftGymEnv(gym.Env):
         "render_fps": FPS,
     }
 
-    def __init__(self, point: tuple):
+    def __init__(self, point: tuple, env: Environment):
         super().__init__()
         self.point = point
-        self.env = Environment()
+        self.env = env
 
         """
         The actions:
@@ -55,27 +55,27 @@ class HoveringSpacecraftGymEnv(gym.Env):
         max_velocity = 100
 
         low = np.array([
-            -WORLD_SIZE,  # delta x
-            -WORLD_SIZE,  # delta y
+            -env.WORLD_SIZE,  # delta x
+            -env.WORLD_SIZE,  # delta y
             -max_velocity,  # x velocity
             -max_velocity,  # y velocity
             -1,  # cos angle
             -1,  # sin angle
             -2 * np.pi,  # angular velocity
-            MIN_THRUST_LEVEL,  # thrust level
-            MIN_GIMBAL_LEVEL  # gimbal level
+            env.MIN_THRUST_LEVEL,  # thrust level
+            env.MIN_GIMBAL_LEVEL  # gimbal level
         ])
 
         high = np.array([
-            WORLD_SIZE,  # delta x
-            WORLD_SIZE,  # delta y
+            env.WORLD_SIZE,  # delta x
+            env.WORLD_SIZE,  # delta y
             max_velocity,  # x velocity
             max_velocity,  # y velocity
             1,  # cos angle
             1,  # sin angle
             2 * np.pi,  # angular velocity
-            MAX_THRUST_LEVEL,  # thrust level
-            MAX_GIMBAL_LEVEL  # gimbal level
+            env.MAX_THRUST_LEVEL,  # thrust level
+            env.MAX_GIMBAL_LEVEL  # gimbal level
         ])
 
         self.observation_space = spaces.Box(low, high, dtype=np.float64)
@@ -96,20 +96,23 @@ class HoveringSpacecraftGymEnv(gym.Env):
         return np.array(state, dtype=np.float64)
 
     def _calculate_reward(self, current_env: Environment, previous_env: Environment):
-        # Closer is better
-        distance = math.sqrt((current_env.position[0] - self.point[0]) ** 2 + (
-            current_env.position[1] - self.point[1]) ** 2)
-        rotation = 20 * current_env.angular_velocity ** 2
-        return 1/(distance + rotation + 1)
+        distance_penalty = math.sqrt((current_env.position[0] - self.point[0]) ** 2 + (
+            current_env.position[1] - self.point[1]) ** 2) * 1e-2
+
+        # angle_penalty = current_env.angle ** 2
+        angle_penalty = 0
+
+        return -(distance_penalty + angle_penalty)
 
     def step(self, action_idx):
         action = self.env.action_space[action_idx]
         previous_env = copy(self.env)
         terminated = self.env.step(action)
         observation = self._get_obs()
-        truncated = self.env.steps > 1000
+        total_steps = 300
+        truncated = self.env.steps > total_steps
         if terminated:
-            reward = -10
+            reward = -100
         else:
             reward = self._calculate_reward(self.env, previous_env)
         info = {}
@@ -121,14 +124,15 @@ class HoveringSpacecraftGymEnv(gym.Env):
         self.env.position = (
             self.point[0] + np.random.randint(-30, 30), self.point[1] + np.random.randint(-30, 30))
 
-        self.env.velocity = (np.random.uniform(-20, 20),
-                             np.random.uniform(-20, 20))
-        self.env.angular_velocity = np.random.uniform(-0.4, 0.4)
+        self.env.velocity = (np.random.uniform(-10, 10),
+                             np.random.uniform(-10, 10))
+        self.env.angular_velocity = np.random.uniform(-0.2, 0.2)
         self.env.thrust_level = np.random.randint(
-            MIN_THRUST_LEVEL, MAX_THRUST_LEVEL)
+            env.MIN_THRUST_LEVEL, env.MAX_THRUST_LEVEL)
         self.env.gimbal_level = np.random.randint(
-            MIN_GIMBAL_LEVEL, MAX_GIMBAL_LEVEL)
+            env.MIN_GIMBAL_LEVEL, env.MAX_GIMBAL_LEVEL)
         info = {}
+        env.state = env.STATE_IN_FLIGHT
         observation = self._get_obs()
         return observation, info
 
@@ -183,37 +187,42 @@ class PPOHoveringAgent(Agent):
 
     def render(self, window):
         pygame.draw.circle(window, color=(0, 255, 0), center=(
-            self.point[0], WORLD_SIZE-self.point[1]), radius=2)
+            self.point[0], env.WORLD_SIZE-self.point[1]), radius=2)
 
 
-def train_agent():
-    # env = HoveringSpacecraftGymEnv(point=(400, 400))
-    env = make_vec_env(lambda: HoveringSpacecraftGymEnv(
-        point=(400, 400)), n_envs=8, vec_env_cls=SubprocVecEnv)
+def train_agent(env: Environment):
+
+    # env = make_vec_env(lambda: HoveringSpacecraftGymEnv(point=(
+    #    WORLD_SIZE//2, WORLD_SIZE//2), env=env), n_envs=4, vec_env_cls=SubprocVecEnv)
+    env = HoveringSpacecraftGymEnv(
+        env=env, point=(env.WORLD_SIZE//2, env.WORLD_SIZE//2))
     # check_env(env)
 
     checkpoint_callback = CheckpointCallback(
-        save_freq=10_000,
+        save_freq=5000,
         save_path="./saves/",
         name_prefix="ppo_spacecraft",
         save_replay_buffer=True,
         save_vecnormalize=True,
     )
 
-    model = PPO("MlpPolicy", env, verbose=1, batch_size=128,
-                n_steps=12800, device="cpu", tensorboard_log="./tensorboard_logs")
-    model.learn(total_timesteps=1000_000_000, callback=checkpoint_callback)
+    model = PPO("MlpPolicy", env, verbose=1, device="cpu",
+                tensorboard_log="./tensorboard_logs")
+    model.learn(total_timesteps=10_000_000, callback=checkpoint_callback)
     # model.save("ppo_spacecraft")
 
 
-def test_agent():
-    model = PPO.load("./saves/ppo_spacecraft_7120000_steps", device="cpu")
-    agent = PPOHoveringAgent(model, (470, 160))
-    env = Environment()
-    start_visualization(env, fps=60, agent=agent,
-                        save_animation_frames=True)
+def test_agent(env: Environment):
+    model = PPO.load("./saves/ppo_spacecraft_710000_steps", device="cpu")
+    point = (env.WORLD_SIZE//2, env.WORLD_SIZE//2)
+    agent = PPOHoveringAgent(model, point)
+    env.position = point
+    env.state = env.STATE_IN_FLIGHT
+    start_visualization(env, fps=30, agent=agent,
+                        save_animation_frames=False)
 
 
 if __name__ == "__main__":
-    # train_agent()
-    test_agent()
+    env = Environment(time_step_size=1/5)
+    # train_agent(env)
+    test_agent(env)

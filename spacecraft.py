@@ -1,27 +1,27 @@
 import numpy as np
 
-STATE_LAUNCH = 0
-STATE_IN_FLIGHT = 1
-STATE_ENDED = 2
-WORLD_SIZE = 600
-
-MAX_GIMBAL_LEVEL = 5
-MIN_GIMBAL_LEVEL = -5
-
-MAX_THRUST_LEVEL = 10
-MIN_THRUST_LEVEL = 0
-
 
 class Environment:
+    WORLD_SIZE = 600
+
+    STATE_LAUNCH = 0
+    STATE_IN_FLIGHT = 1
+    STATE_ENDED = 2
+
+    MIN_GIMBAL_LEVEL = -5
+    MAX_GIMBAL_LEVEL = 5
+
+    MIN_THRUST_LEVEL = 0
+    MAX_THRUST_LEVEL = 10
 
     def __init__(self, gravity=-9.81, time_step_size=1/30):
         self.gravity = gravity
         self.width = 48.0
         self.height = 64.0
         self.mass = 500
-        self.ground_line = WORLD_SIZE - 467
-        self.launch_pad = (470, self.ground_line)
-        self.landing_area = (100, self.ground_line)
+        self.ground_line = 50
+        self.landing_area = (self.WORLD_SIZE//2, self.ground_line)
+        self.launch_pad = self.landing_area
         self.moment = self.mass * 1/12 * (self.height ** 2 + self.width ** 2)
 
         # Distance from engine to center of mass
@@ -35,10 +35,10 @@ class Environment:
         self.max_thrust = -2 * self.mass * gravity
         self.min_thrust = -0.7 * self.mass * gravity
 
-        self.max_thrust_level = MAX_THRUST_LEVEL
+        self.max_thrust_level = self.MAX_THRUST_LEVEL
 
         # Number of angle settings for each side
-        self.max_gimbal_level = MAX_GIMBAL_LEVEL
+        self.max_gimbal_level = self.MAX_GIMBAL_LEVEL
 
         self.action_space = []
         for gimbal_action in range(-1, 2):
@@ -60,7 +60,7 @@ class Environment:
         self.thrust_level = 0  # from 0 to 6
         self.gimbal_level = 0  # from -6 to 6
 
-        self.state = STATE_LAUNCH
+        self.state = self.STATE_LAUNCH
 
         self._update_collision_variables()
 
@@ -110,7 +110,7 @@ class Environment:
         if y - self.height / 4 < self.ground_line:
             has_collided = True
 
-        if y > WORLD_SIZE or x > WORLD_SIZE or x < 0:
+        if y > self.WORLD_SIZE or x > self.WORLD_SIZE or x < 0:
             has_collided = True
 
         self.has_collided = has_collided
@@ -125,10 +125,10 @@ class Environment:
         return np.sqrt((self.velocity[0]) ** 2 + (self.velocity[1]) ** 2)
 
     def flight_has_ended(self):
-        return self.state == STATE_ENDED
+        return self.state == self.STATE_ENDED
 
     def has_lifted_off(self):
-        return self.state in [STATE_IN_FLIGHT, STATE_ENDED]
+        return self.state in [self.STATE_IN_FLIGHT, self.STATE_ENDED]
 
     def _perform_action(self, action):
         if action not in self.action_space:
@@ -171,30 +171,30 @@ class Environment:
         self._update_collision_variables()
 
     def step(self, action):
-        if self.state == STATE_LAUNCH:
+        if self.state == self.STATE_LAUNCH:
             self._perform_action(action)
             self.steps += 1
 
             if self._get_y_velocity() <= 0:
-                return self.state == STATE_ENDED
+                return self.state == self.STATE_ENDED
 
-            self.state = STATE_IN_FLIGHT
+            self.state = self.STATE_IN_FLIGHT
             self._update_flight_variables()
-            return self.state == STATE_ENDED
+            return self.state == self.STATE_ENDED
 
-        elif self.state == STATE_IN_FLIGHT:
+        elif self.state == self.STATE_IN_FLIGHT:
             self._perform_action(action)
 
             self._update_flight_variables()
 
             if self.has_collided:
                 self.thrust_level = 0
-                self.state = STATE_ENDED
+                self.state = self.STATE_ENDED
 
             self.steps += 1
-            return self.state == STATE_ENDED
+            return self.state == self.STATE_ENDED
 
-        elif self.state == STATE_ENDED:
+        elif self.state == self.STATE_ENDED:
             return True
         else:
             raise ValueError(f"Unrecognized state {self.state}")
