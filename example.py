@@ -44,7 +44,7 @@ class HumanPlayerAgent(Agent):
         pass
 
 
-environment = Environment(time_step_size=1)
+environment = Environment(time_step_size=1/2)
 agent = HumanPlayerAgent()
 start_visualization(environment, fps=10, agent=agent,
                     save_animation_frames=True)

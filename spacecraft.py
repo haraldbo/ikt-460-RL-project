@@ -172,12 +172,12 @@ class Environment:
             self._perform_action(action)
             self.steps += 1
 
+            # Waiting
             if self._get_y_velocity() <= 0:
-                return self.state == self.STATE_ENDED
+                return
 
             self.state = self.STATE_IN_FLIGHT
             self._update_flight_variables()
-            return self.state == self.STATE_ENDED
 
         elif self.state == self.STATE_IN_FLIGHT:
             self._perform_action(action)
@@ -189,9 +189,8 @@ class Environment:
                 self.state = self.STATE_ENDED
 
             self.steps += 1
-            return self.state == self.STATE_ENDED
 
         elif self.state == self.STATE_ENDED:
-            return True
+            return
         else:
             raise ValueError(f"Unrecognized state {self.state}")

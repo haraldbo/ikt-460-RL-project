@@ -106,7 +106,8 @@ class HoveringSpacecraftGymEnv(gym.Env):
     def step(self, action_idx):
         action = self.env.action_space[action_idx]
         previous_env = copy(self.env)
-        terminated = self.env.step(action)
+        self.env.step(action)
+        terminated = self.env.state == self.env.STATE_ENDED
         observation = self._get_obs()
         total_steps = 200
         truncated = self.env.steps > total_steps
@@ -218,7 +219,7 @@ def train_agent(env: Environment):
 
 
 def test_agent(env: Environment):
-    model = PPO.load("./saves/ppo_spacecraft_915000_steps", device="cpu")
+    model = PPO.load("./saves/ppo_spacecraft_620000_steps", device="cpu")
     point = (env.WORLD_SIZE//2, env.WORLD_SIZE//2)
     agent = PPOHoveringAgent(model, point)
     env.position = point
