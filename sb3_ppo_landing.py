@@ -103,9 +103,9 @@ class LandingSpacecraftGymEnv(gym.Env):
 
         if flight_ended:
             distance_penalty = self.env.get_distance_to_landing_site()
-            velocity_penalty = self.env.get_velocity()
-            angle_penalty = np.fabs(self.env.angle) * 20
-            angular_velocity_penalty = np.fabs(self.env.angular_velocity) * 20
+            velocity_penalty = self.env.get_velocity() * 2
+            angle_penalty = np.fabs(self.env.angle) * 15
+            angular_velocity_penalty = np.fabs(self.env.angular_velocity) * 15
             reward = 100 - (distance_penalty + angle_penalty +
                             velocity_penalty + angular_velocity_penalty)
 
@@ -113,11 +113,10 @@ class LandingSpacecraftGymEnv(gym.Env):
             prev_velocity = prev_env.get_velocity()
             current_velocity = self.env.get_velocity()
 
-            if current_velocity > prev_velocity and current_velocity > 1:
-                velocity_penalty = current_velocity * 1e-2
+            if current_velocity > 5:
+                velocity_penalty = (current_velocity**2) * 1e-2
             else:
                 velocity_penalty = 0
-
             reward = -(0.01 + velocity_penalty)
         info = {}
 
@@ -128,13 +127,13 @@ class LandingSpacecraftGymEnv(gym.Env):
 
     def reset(self, seed=None, options=None):
         self.env.reset()
-        self.env.position = (self.env.landing_area[0] + np.random.randint(-40, 40),
-                             self.env.landing_area[1] + np.random.randint(40, 80))
+        self.env.position = (self.env.landing_area[0] + np.random.randint(-20, 20),
+                             self.env.landing_area[1] + np.random.randint(30, 60))
 
-        self.env.velocity = (np.random.uniform(-5, 5),
-                             np.random.uniform(-5, 5))
+        self.env.velocity = (np.random.uniform(-3, 3),
+                             np.random.uniform(-3, 3))
         self.env.angle = np.random.uniform(-np.pi/4, np.pi/4)
-        self.env.angular_velocity = np.random.uniform(-0.3, 0.3)
+        self.env.angular_velocity = np.random.uniform(-0.2, 0.2)
         self.env.thrust_level = np.random.randint(
             self.env.MIN_THRUST_LEVEL, self.env.MAX_THRUST_LEVEL)
         self.env.gimbal_level = np.random.randint(
@@ -192,10 +191,18 @@ def train_agent(init_env: Environment):
 
     checkpoint_callback = CheckpointCallback(
         save_freq=5000,
-        save_path="./saves/",
+        save_path="./ppo_lander_checkpoints/",
         name_prefix="ppo_landing",
         save_replay_buffer=True,
         save_vecnormalize=True,
+    )
+
+    eval_callback = EvalCallback(
+        env,
+        best_model_save_path="./ppo_lander_best",
+        eval_freq=5000,
+        n_eval_episodes=100,
+        deterministic=True
     )
 
     model = PPO(
@@ -205,22 +212,26 @@ def train_agent(init_env: Environment):
         tensorboard_log="./tensorboard_logs",
         gamma=0.99
     )
-    model.learn(total_timesteps=10_000_000, callback=checkpoint_callback)
+    model.learn(total_timesteps=10_000_000, callback=[
+                checkpoint_callback, eval_callback])
     # model.save("ppo_spacecraft")
 
 
 def test_agent(env: Environment):
-    model = PPO.load("./saves/ppo_landing_225000_steps", device="cpu")
-    point = (env.landing_area[0] - 10, env.landing_area[1] + 80)
+    model = PPO.load(
+        "./ppo_lander_best/best_model", device="cpu")
+    point = (env.landing_area[0] - 0, env.landing_area[1] + 100)
     agent = PPOLandingAgent(model)
     env.position = point
     env.thrust_level = 5
+    env.angular_velocity = 0.2
     env.state = env.STATE_IN_FLIGHT
-    start_visualization(env, fps=10, agent=agent,
+    start_visualization(env, fps=30, agent=agent,
                         save_animation_frames=False)
 
 
 if __name__ == "__main__":
     init_env = Environment(time_step_size=1/5)
+
     # train_agent(init_env)
     test_agent(init_env)

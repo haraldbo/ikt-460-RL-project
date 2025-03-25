@@ -2,3 +2,4 @@
 /logs
 /tensorboard_logs
 /saves
+/ppo_lander_checkpoints
