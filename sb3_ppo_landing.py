@@ -48,7 +48,10 @@ class LandingSpacecraftGymEnv(gym.Env):
             - thrust level
             - gimbal level
         """
-        max_velocity = 100
+
+        # Probably won't reach this values
+        max_velocity = 200
+        max_angular_velocity = 2 * np.pi
 
         low = np.array([
             -env.WORLD_SIZE,  # delta x
@@ -57,7 +60,7 @@ class LandingSpacecraftGymEnv(gym.Env):
             -max_velocity,  # y velocity
             -1,  # cos angle
             -1,  # sin angle
-            -2 * np.pi,  # angular velocity
+            -max_angular_velocity,  # angular velocity
             env.MIN_THRUST_LEVEL,  # thrust level
             env.MIN_GIMBAL_LEVEL  # gimbal level
         ])
@@ -69,7 +72,7 @@ class LandingSpacecraftGymEnv(gym.Env):
             max_velocity,  # y velocity
             1,  # cos angle
             1,  # sin angle
-            2 * np.pi,  # angular velocity
+            max_angular_velocity,  # angular velocity
             env.MAX_THRUST_LEVEL,  # thrust level
             env.MAX_GIMBAL_LEVEL  # gimbal level
         ])
@@ -98,30 +101,30 @@ class LandingSpacecraftGymEnv(gym.Env):
         observation = self._get_obs()
 
         if flight_ended:
-            distance_score = 1000 - self.env.get_distance_to_landing_site()
-            angle_score = (2 * np.pi - np.fabs(self.env.angle)) * 10
-            velocity_score = 200 - self.env.get_velocity()
-            angular_velocity_score = (
-                np.pi - np.fabs(self.env.angular_velocity)) * 10
-            reward = distance_score + velocity_score + angle_score + angular_velocity_score
+            distance_penalty = self.env.get_distance_to_landing_site()
+            velocity_penalty = self.env.get_velocity()
+            angle_penalty = np.fabs(self.env.angle) * 20
+            angular_velocity_penalty = np.fabs(self.env.angular_velocity) * 20
+            reward = 100 - (distance_penalty + angle_penalty +
+                            velocity_penalty + angular_velocity_penalty)
         else:
             reward = -0.01
         info = {}
 
         terminated = flight_ended
-        truncated = False
+        truncated = self.env.steps >= 100
 
         return observation, reward, terminated, truncated, info
 
     def reset(self, seed=None, options=None):
         self.env.reset()
-        self.env.position = (
-            self.env.WORLD_SIZE//2 + np.random.randint(-40, 40), self.env.WORLD_SIZE//2 + np.random.randint(-40, 40))
+        self.env.position = (self.env.landing_area[0] + np.random.randint(-40, 40),
+                             self.env.landing_area[1] + np.random.randint(40, 80))
 
-        self.env.velocity = (np.random.uniform(-15, 15),
-                             np.random.uniform(-15, 15))
+        self.env.velocity = (np.random.uniform(-5, 5),
+                             np.random.uniform(-5, 5))
         self.env.angle = np.random.uniform(-np.pi/4, np.pi/4)
-        self.env.angular_velocity = np.random.uniform(-0.4, 0.4)
+        self.env.angular_velocity = np.random.uniform(-0.3, 0.3)
         self.env.thrust_level = np.random.randint(
             self.env.MIN_THRUST_LEVEL, self.env.MAX_THRUST_LEVEL)
         self.env.gimbal_level = np.random.randint(
@@ -170,11 +173,11 @@ class PPOLandingAgent(Agent):
         pass
 
 
-def train_agent(env: Environment):
+def train_agent(init_env: Environment):
 
     # env = make_vec_env(lambda: HoveringSpacecraftGymEnv(point=(
     #    WORLD_SIZE//2, WORLD_SIZE//2), env=env), n_envs=4, vec_env_cls=SubprocVecEnv)
-    env = LandingSpacecraftGymEnv(env=env)
+    env = LandingSpacecraftGymEnv(env=init_env)
     # check_env(env)
 
     checkpoint_callback = CheckpointCallback(
@@ -197,16 +200,16 @@ def train_agent(env: Environment):
 
 
 def test_agent(env: Environment):
-    model = PPO.load("./saves/ppo_landing_250000_steps", device="cpu")
-    point = (env.WORLD_SIZE//2 + 200, env.WORLD_SIZE//2)
+    model = PPO.load("./saves/ppo_landing_610000_steps", device="cpu")
+    point = (env.landing_area[0] - 10, env.landing_area[1] + 50)
     agent = PPOLandingAgent(model)
     env.position = point
     env.state = env.STATE_IN_FLIGHT
-    start_visualization(env, fps=30, agent=agent,
+    start_visualization(env, fps=10, agent=agent,
                         save_animation_frames=False)
 
 
 if __name__ == "__main__":
-    init_env = Environment(time_step_size=1/2)
-    # train_agent(init_env)
-    test_agent(init_env)
+    init_env = Environment(time_step_size=1/5)
+    train_agent(init_env)
+    # test_agent(init_env)
