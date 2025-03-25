@@ -96,6 +96,7 @@ class LandingSpacecraftGymEnv(gym.Env):
 
     def step(self, action_idx):
         action = self.env.action_space[action_idx]
+        prev_env = copy(self.env)
         self.env.step(action)
         flight_ended = self.env.state == self.env.STATE_ENDED
         observation = self._get_obs()
@@ -107,8 +108,17 @@ class LandingSpacecraftGymEnv(gym.Env):
             angular_velocity_penalty = np.fabs(self.env.angular_velocity) * 20
             reward = 100 - (distance_penalty + angle_penalty +
                             velocity_penalty + angular_velocity_penalty)
+
         else:
-            reward = -0.01
+            prev_velocity = prev_env.get_velocity()
+            current_velocity = self.env.get_velocity()
+
+            if current_velocity > prev_velocity and current_velocity > 1:
+                velocity_penalty = current_velocity * 1e-2
+            else:
+                velocity_penalty = 0
+
+            reward = -(0.01 + velocity_penalty)
         info = {}
 
         terminated = flight_ended
@@ -200,10 +210,11 @@ def train_agent(init_env: Environment):
 
 
 def test_agent(env: Environment):
-    model = PPO.load("./saves/ppo_landing_610000_steps", device="cpu")
-    point = (env.landing_area[0] - 10, env.landing_area[1] + 50)
+    model = PPO.load("./saves/ppo_landing_225000_steps", device="cpu")
+    point = (env.landing_area[0] - 10, env.landing_area[1] + 80)
     agent = PPOLandingAgent(model)
     env.position = point
+    env.thrust_level = 5
     env.state = env.STATE_IN_FLIGHT
     start_visualization(env, fps=10, agent=agent,
                         save_animation_frames=False)
@@ -211,5 +222,5 @@ def test_agent(env: Environment):
 
 if __name__ == "__main__":
     init_env = Environment(time_step_size=1/5)
-    train_agent(init_env)
-    # test_agent(init_env)
+    # train_agent(init_env)
+    test_agent(init_env)
