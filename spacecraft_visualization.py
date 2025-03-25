@@ -5,7 +5,7 @@ from pygame.font import Font
 from pygame.transform import scale
 from PIL import Image
 import copy
-from abc import ABC, abstractmethod
+from common import Agent
 
 
 class ExplosionRenderer:
@@ -226,34 +226,6 @@ def spacecraft_has_exploded(environment: Environment):
         environment.angular_velocity) > 0.5 or environment.get_velocity() > 10
     too_high_angle = np.fabs(environment.angle) > 0.1
     return environment.flight_has_ended() and (is_far_from_landing_site or too_high_angle or too_high_velocity)
-
-
-class Agent(ABC):
-
-    @abstractmethod
-    def get_action(self, environment: Environment):
-        """
-        Returns the next action to perform, given the current environment
-        """
-        pass
-
-    def render(self, surface: pygame.Surface):
-        """
-        Render something to the window. Like state variables or personal thoughts.
-        """
-        pass
-
-    def handle_event(self, event: pygame.event.Event):
-        """
-        Can be used to handle events like clicking or mouse presses. 
-        """
-        pass
-
-    def reset(self):
-        """
-        If agent returns actions sequentially from a list, this could be used to reset the index that points to the current action to return.
-        """
-        pass
 
 
 def start_visualization(initial_environment: Environment, agent: Agent, fps=100, save_animation_frames=False):

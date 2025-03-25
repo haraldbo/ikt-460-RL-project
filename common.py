@@ -1,0 +1,42 @@
+from abc import ABC, abstractmethod
+from spacecraft import Environment
+import pygame
+from pathlib import Path
+
+
+class Settings:
+    SAVES_DIR = Path(__file__).parent / "saves"
+
+    PPO_SAVE_DIR = SAVES_DIR / "ppo"
+    PPO_LANDER_BEST = PPO_SAVE_DIR / "lander" / "best"
+    PPO_LANDER_CHECKPOINT = PPO_SAVE_DIR / "lander" / "checkpoint"
+    PPO_CONTROL_BEST = PPO_SAVE_DIR / "control" / "best"
+    PPO_CONTROL_CHECKPOINT = PPO_SAVE_DIR / "control" / "checkpoint"
+
+
+class Agent(ABC):
+
+    @abstractmethod
+    def get_action(self, environment: Environment):
+        """
+        Returns the next action to perform, given the current environment
+        """
+        pass
+
+    def render(self, surface: pygame.Surface):
+        """
+        Render something to the window. Like state variables or personal thoughts.
+        """
+        pass
+
+    def handle_event(self, event: pygame.event.Event):
+        """
+        Can be used to handle events like clicking or mouse presses. 
+        """
+        pass
+
+    def reset(self):
+        """
+        If agent returns actions sequentially from a list, this could be used to reset the index that points to the current action to return.
+        """
+        pass
