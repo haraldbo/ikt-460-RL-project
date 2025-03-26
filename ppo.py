@@ -1,4 +1,4 @@
-from gyms import LandingSpacecraftGymEnv, HoveringSpacecraftGymEnv
+from gyms import LandingSpacecraftGymEnv, HoveringSpacecraftGymEnv, Scalers
 from spacecraft import Environment
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3 import PPO, DDPG
@@ -15,15 +15,17 @@ class PPOLandingAgent(Agent):
 
     def get_action(self, env: Environment):
         state = np.array([
-            env.position[0] - env.landing_area[0],  # delta x
-            env.position[1] - env.landing_area[1],  # delta y
-            env.velocity[0],  # x velocity
-            env.velocity[1],  # y velocity
+            (env.position[0] - env.landing_area[0]) /
+            Scalers.POSITION,  # delta x
+            (env.position[1] - env.landing_area[1]) /
+            Scalers.POSITION,  # delta y
+            env.velocity[0]/Scalers.VELOCITY,  # x velocity
+            env.velocity[1]/Scalers.VELOCITY,  # y velocity
             np.cos(env.angle),  # cos angle
             np.sin(env.angle),  # sin angle
             env.angular_velocity,  # angular velocity
-            env.thrust_level,  # thrust level
-            env.gimbal_level  # gimbal level
+            env.thrust_level/Scalers.THRUST,  # thrust level
+            env.gimbal_level/Scalers.GIMBAL  # gimbal level
         ])
         action_idx, _ = self.model.predict(state, deterministic=True)
         return env.action_space[action_idx.item()]
@@ -145,7 +147,7 @@ def train_landing_agent(init_env: Environment):
         verbose=0,
         device="cpu",
         tensorboard_log="./tensorboard_logs",
-        gamma=0.99
+        gamma=1
     )
     model.learn(total_timesteps=10_000_000, callback=[
                 checkpoint_callback, eval_callback])
@@ -153,17 +155,18 @@ def train_landing_agent(init_env: Environment):
 
 def test_landing_agent(env: Environment):
     model = PPO.load(Settings.PPO_LANDER_BEST / "best_model", device="cpu")
-    point = (env.landing_area[0] - 0, env.landing_area[1] + 100)
+    point = (env.landing_area[0] - 200, env.landing_area[1] + 120)
     agent = PPOLandingAgent(model)
     env.position = point
-    env.thrust_level = 5
-    env.angular_velocity = 0.2
+    env.thrust_level = 10
+    env.angular_velocity = 0.4
+    env.velocity = (10, 10)
     env.state = env.STATE_IN_FLIGHT
     start_visualization(env, fps=30, agent=agent,
                         save_animation_frames=False)
 
 
 if __name__ == "__main__":
-    init_env = Environment(time_step_size=1/5)
-    train_landing_agent(init_env)
-    # test_landing_agent(init_env)
+    init_env = Environment(time_step_size=Settings.TIME_STEP_SIZE)
+    # train_landing_agent(init_env)
+    test_landing_agent(init_env)

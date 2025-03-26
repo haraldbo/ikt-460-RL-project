@@ -2,12 +2,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-velocity = 10
+velocities = np.linspace(0, 10)
 
-distance = np.linspace(0, 100)
+penalty = (velocities/4) ** 4
 
-epsilon = 0.5
-penalty = velocity / (distance**2 + epsilon)
-
-plt.plot(distance, penalty)
+plt.plot(velocities, penalty)
 plt.show()
