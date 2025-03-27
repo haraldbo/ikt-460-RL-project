@@ -14,7 +14,7 @@ class Scalers:
     GIMBAL = Environment.MAX_GIMBAL_LEVEL
 
 
-class SpacecraftGymEnv(gym.Env):
+class SpacecraftGym(gym.Env):
 
     metadata = {
         "render_modes": ["human", "rgb_array"],
@@ -78,8 +78,14 @@ class SpacecraftGymEnv(gym.Env):
         self.observation_space = spaces.Box(low, high, dtype=np.float64)
         self.reset()
 
+    def render(self):
+        pass
 
-class LandingSpacecraftGymEnv(SpacecraftGymEnv):
+    def close(self):
+        pass
+
+
+class LandingSpacecraftGym(SpacecraftGym):
 
     metadata = {
         "render_modes": ["human", "rgb_array"],
@@ -146,26 +152,24 @@ class LandingSpacecraftGymEnv(SpacecraftGymEnv):
         observation = self._get_obs()
         return observation, info
 
-    def render(self):
-        pass
 
-    def close(self):
-        pass
+class HoveringSpacecraftGym(SpacecraftGym):
 
-
-class HoveringSpacecraftGymEnv(SpacecraftGymEnv):
+    def __init__(self, env, point):
+        self.point = point
+        super().__init__(env)
 
     def _get_obs(self):
         state = [
-            self.env.position[0] - self.point[0],  # delta x
-            self.env.position[1] - self.point[1],  # delta y
-            self.env.velocity[0],  # x velocity
-            self.env.velocity[1],  # y velocity
+            (self.env.position[0] - self.point[0])/Scalers.POSITION,  # delta x
+            (self.env.position[1] - self.point[1])/Scalers.POSITION,  # delta y
+            (self.env.velocity[0])/Scalers.VELOCITY,  # x velocity
+            (self.env.velocity[1])/Scalers.VELOCITY,  # y velocity
             np.cos(self.env.angle),  # cos angle
             np.sin(self.env.angle),  # sin angle
             self.env.angular_velocity,  # angular velocity
-            self.env.thrust_level,  # thrust level
-            self.env.gimbal_level  # gimbal level
+            self.env.thrust_level/Scalers.THRUST,  # thrust level
+            self.env.gimbal_level/Scalers.GIMBAL  # gimbal level
         ]
         return np.array(state, dtype=np.float64)
 
@@ -210,9 +214,3 @@ class HoveringSpacecraftGymEnv(SpacecraftGymEnv):
         self.env.state = self.env.STATE_IN_FLIGHT
         observation = self._get_obs()
         return observation, info
-
-    def render(self):
-        pass
-
-    def close(self):
-        pass
