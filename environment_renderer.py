@@ -6,7 +6,7 @@ from common import Settings
 
 
 class Colors:
-    AIR = (10, 0, 20)
+    SPACE = (10, 0, 20)
     SOLID = (160, 140, 100)
 
 
@@ -21,7 +21,7 @@ class Renderer:
 
     def _tile_to_color(self, tile: MapTile):
         if tile == MapTile.AIR:
-            return Colors.AIR
+            return Colors.SPACE
         else:
             return Colors.SOLID
 
@@ -34,7 +34,18 @@ class Renderer:
                     map.tile_map[map.height - y - 1, x]))
 
         if Settings.RENDERING_SPACECRAFT_DEBUGGING:
-            pygame.draw.circle(map_img, color=(0, 255, 0), center = (map_img.get_width()//2, map_img.get_height() - 10), radius=3)
+            pygame.draw.circle(map_img, color=(0, 255, 0), center=(
+                map_img.get_width()//2, map_img.get_height() - 10), radius=3)
+
+        n_stars = 20
+        for i in range(n_stars):
+            x = np.random.randint(0, map.width)
+            y = np.random.randint(0, map.height)
+            if map.tile_map[map.height - y - 1, x] == MapTile.AIR:
+                pygame.draw.circle(map_img, color=(255, 255
+                                                   - np.random.randint(0, 55), 255),
+                                   center=(x, y), radius=np.random.randint(1, 3), width=np.random.randint(1, 3))
+
         return map_img
 
     def _update_viewport_left_top(self, env: Environment):
@@ -44,9 +55,9 @@ class Renderer:
         viewport_width, viewport_height = Settings.RENDERING_VIEWPORT_SIZE
 
         self.left = max(0, min(x - viewport_width//2,
-                        env.map.width - viewport_width))
+                               env.map.width - viewport_width))
         self.top = max(0, min(y_screen - viewport_height //
-                       2, env.map.height - viewport_height))
+                              2, env.map.height - viewport_height))
 
     def _render_map(self, env: Environment):
         if not self.map_image:
@@ -77,6 +88,7 @@ class Renderer:
                     0, 0, 255), center=(x - self.left, env.map.height - y - self.top), radius=1)
 
     def _render_jet(self, env: Environment):
+        # TODO: Check if has collided with solid
         if env.thrust_level == 0:
             return
         engine_angle = -np.pi/2 - env.get_engine_local_angle() + env.angle

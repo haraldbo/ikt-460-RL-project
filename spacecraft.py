@@ -117,8 +117,8 @@ class Environment:
         corners_neutral = np.array([
             [- self.width/2, self.height / 2],  # (left, top)
             [self.width/2,  self.height / 2],  # (right, top)
-            [- self.width/2, -self.height / 2],  # (left, bottom)
-            [self.width/2, -self.height / 2]  # (right, bottom)
+            [- self.width/2 + 5, -self.height / 2],  # (left, bottom)
+            [self.width/2 - 5, -self.height / 2]  # (right, bottom)
         ]).T
 
         rotation_matrix = np.array([

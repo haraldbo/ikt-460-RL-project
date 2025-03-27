@@ -9,7 +9,7 @@ import numpy as np
 # https://stable-baselines.readthedocs.io/en/master/guide/rl_tips.html#tips-and-tricks-when-creating-a-custom-environment
 class Scalers:
     POSITION = 100
-    VELOCITY = 30
+    VELOCITY = 50
     THRUST = Environment.MAX_THRUST_LEVEL
     GIMBAL = Environment.MAX_GIMBAL_LEVEL
 
@@ -143,14 +143,14 @@ class LandingSpacecraftGym(SpacecraftGym):
         self.env.reset()
 
         # Position spacecraft at some random location above the landing area:
-        self.env.position = (self.landing_area[0] + np.random.randint(-20, 20),
-                             self.landing_area[1] + np.random.randint(40, 80))
+        self.env.position = (self.landing_area[0] + np.random.randint(-50, 50),
+                             self.landing_area[1] + np.random.randint(30, 100))
 
         # With a bit of velocity, angle and angular velocity
         self.env.velocity = (np.random.uniform(-10, 10),
                              np.random.uniform(-10, 10))
         self.env.angle = np.random.uniform(-np.pi/4, np.pi/4)
-        self.env.angular_velocity = np.random.uniform(-0.3, 0.3)
+        self.env.angular_velocity = np.random.uniform(-0.4, 0.4)
 
         # And with a random rocket engine configuration
         self.env.thrust_level = np.random.randint(

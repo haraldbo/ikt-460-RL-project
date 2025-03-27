@@ -44,5 +44,5 @@ if __name__ == "__main__":
     landing_agent = PPOLandingAgent(
         PPO.load(Settings.PPO_LANDER_BEST / "best_model", device="cpu"))
     init_env = Environment(time_step_size=Settings.TIME_STEP_SIZE)
-    init_env.angular_velocity = 0.1
+    init_env.position = (init_env.map.width//2-250, 10 + 300)
     test_agent(landing_agent, init_env)
