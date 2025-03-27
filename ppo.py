@@ -1,8 +1,7 @@
-from gyms import LandingSpacecraftGym, HoveringSpacecraftGym, Scalers
+from gyms import LandingSpacecraftGym, Scalers
 from spacecraft import Environment
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3 import PPO, DDPG
-from spacecraft_visualization import start_visualization
 import numpy as np
 from common import *
 
@@ -15,9 +14,9 @@ class PPOLandingAgent(Agent):
 
     def get_action(self, env: Environment):
         state = np.array([
-            (env.position[0] - env.landing_area[0]) /
+            (env.position[0] - env.map.width//2) /
             Scalers.POSITION,  # delta x
-            (env.position[1] - env.landing_area[1]) /
+            (env.position[1] - 10) /
             Scalers.POSITION,  # delta y
             env.velocity[0]/Scalers.VELOCITY,  # x velocity
             env.velocity[1]/Scalers.VELOCITY,  # y velocity
@@ -118,9 +117,7 @@ def test_hovering_agent(env: Environment):
     point = (env.WORLD_SIZE//2, env.WORLD_SIZE//2)
     agent = PPOHoveringAgent(model, point)
     env.position = point
-    env.state = env.STATE_IN_FLIGHT
-    start_visualization(env, fps=30, agent=agent,
-                        save_animation_frames=False)
+    env.state = env.STATE_FLIGHT
 
 
 def train_landing_agent(init_env: Environment):
@@ -161,12 +158,10 @@ def test_landing_agent(env: Environment):
     env.thrust_level = 10
     env.angular_velocity = 0.1
     env.velocity = (50, 10)
-    env.state = env.STATE_IN_FLIGHT
-    start_visualization(env, fps=30, agent=agent,
-                        save_animation_frames=False)
+    env.state = env.STATE_FLIGHT
 
 
 if __name__ == "__main__":
     init_env = Environment(time_step_size=Settings.TIME_STEP_SIZE)
-    # train_landing_agent(init_env)
-    test_landing_agent(init_env)
+    train_landing_agent(init_env)
+    # test_landing_agent(init_env)

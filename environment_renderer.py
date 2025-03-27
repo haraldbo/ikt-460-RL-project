@@ -1,0 +1,124 @@
+from spacecraft import Environment, Map, MapTile
+from pygame import Surface
+import pygame
+import numpy as np
+from common import Settings
+
+
+class Colors:
+    AIR = (10, 0, 20)
+    SOLID = (160, 140, 100)
+
+
+class Renderer:
+
+    def __init__(self):
+        self.map_image = None
+        self.spacecraft_img = pygame.image.load("images/spacecraft.png")
+        self.render_image = None
+        self.top = 0
+        self.left = 0
+
+    def _tile_to_color(self, tile: MapTile):
+        if tile == MapTile.AIR:
+            return Colors.AIR
+        else:
+            return Colors.SOLID
+
+    def _map_to_image(self, map: Map):
+        map_img = Surface((map.width, map.height))
+
+        for y in range(map.height):
+            for x in range(map.width):
+                map_img.set_at((x, y), self._tile_to_color(
+                    map.tile_map[map.height - y - 1, x]))
+
+        if Settings.RENDERING_SPACECRAFT_DEBUGGING:
+            pygame.draw.circle(map_img, color=(0, 255, 0), center = (map_img.get_width()//2, map_img.get_height() - 10), radius=3)
+        return map_img
+
+    def _update_viewport_left_top(self, env: Environment):
+        x, y = env.position
+        y_screen = env.map.height - y
+
+        viewport_width, viewport_height = Settings.RENDERING_VIEWPORT_SIZE
+
+        self.left = max(0, min(x - viewport_width//2,
+                        env.map.width - viewport_width))
+        self.top = max(0, min(y_screen - viewport_height //
+                       2, env.map.height - viewport_height))
+
+    def _render_map(self, env: Environment):
+        if not self.map_image:
+            self.map_image = self._map_to_image(env.map)
+
+        self.render_image.blit(self.map_image, dest=(0, 0), area=(
+            self.left, self.top, *Settings.RENDERING_VIEWPORT_SIZE))
+
+    def _render_spacecraft(self, env: Environment):
+        spacecraft_rotated = pygame.transform.rotozoom(
+            self.spacecraft_img, env.angle/(np.pi * 2) * 360, 1)
+        x, y = env.position
+
+        x_dest = x - spacecraft_rotated.get_width() / 2 - self.left
+        y_dest = env.map.height - y - spacecraft_rotated.get_height() / 2 - self.top
+
+        self.render_image.blit(source=spacecraft_rotated,
+                               dest=(x_dest, y_dest))
+
+        if Settings.RENDERING_SPACECRAFT_DEBUGGING:
+            # Center
+            pygame.draw.circle(self.render_image, color=(
+                0, 255, 0), center=(x - self.left, env.map.height - y - self.top), radius=2)
+
+            # Collision vertices
+            for x, y in env.get_collision_vertices():
+                pygame.draw.circle(self.render_image, color=(
+                    0, 0, 255), center=(x - self.left, env.map.height - y - self.top), radius=1)
+
+    def _render_jet(self, env: Environment):
+        if env.thrust_level == 0:
+            return
+        engine_angle = -np.pi/2 - env.get_engine_local_angle() + env.angle
+        radius = max(14, 8 + env.thrust_level)
+
+        x, y = env.position
+        x_dest = x - self.left
+        y_dest = env.map.height - y - self.top
+
+        for i in range(np.random.randint(5, 20)):
+            flame_start = (x_dest + radius * np.cos(-np.pi/2 + env.angle),
+                           y_dest - radius * np.sin(-np.pi/2 + env.angle))
+            flame_length = np.random.randint(10, 40) + env.thrust_level * 2
+            flame_end = (flame_start[0] + np.cos(engine_angle) * flame_length,
+                         flame_start[1] - np.sin(engine_angle) * flame_length
+                         )
+            color = (
+                254 + np.random.randint(-1, 1),
+                190 + np.random.randint(0, 40),
+                180 + np.random.randint(0, 55)
+            )
+            src = (flame_start[0] + np.random.randint(-1, 1),
+                   flame_start[1] + np.random.randint(-1, 1))
+
+            spray = min(env.thrust_level, 3)
+            dest = [flame_end[0] + np.random.randint(-spray, spray),
+                    flame_end[1] + np.random.randint(-spray, spray)]
+
+            jet_width = int(1 + 3 * env.thrust_level/env.MAX_THRUST_LEVEL)
+            pygame.draw.line(self.render_image, color,
+                             src, dest, width=jet_width)
+
+    def render(self, environment: Environment):
+        """
+        renders the environment and the spacecraft
+        """
+        if self.render_image == None:
+            self.render_image = Surface(Settings.RENDERING_VIEWPORT_SIZE)
+
+        self._update_viewport_left_top(environment)
+        self._render_map(environment)
+        self._render_jet(environment)
+        self._render_spacecraft(environment)
+
+        return self.render_image

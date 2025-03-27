@@ -6,7 +6,7 @@ from pathlib import Path
 
 class Settings:
     TIME_STEP_SIZE = 1/5
-    
+
     SAVES_DIR = Path(__file__).parent / "saves"
 
     PPO_SAVE_DIR = SAVES_DIR / "ppo"
@@ -14,6 +14,12 @@ class Settings:
     PPO_LANDER_CHECKPOINT = PPO_SAVE_DIR / "lander" / "checkpoint"
     PPO_CONTROL_BEST = PPO_SAVE_DIR / "control" / "best"
     PPO_CONTROL_CHECKPOINT = PPO_SAVE_DIR / "control" / "checkpoint"
+
+    SIMULATION_FPS = 30
+    SIMULATION_FRAME_SIZE = (600, 600)
+    RENDERING_VIEWPORT_SIZE = (256, 256)
+    RENDERING_SPACECRAFT_DEBUGGING = True
+    RENDER_SPACECRAFT_INFORMATION = True
 
 
 class Agent(ABC):

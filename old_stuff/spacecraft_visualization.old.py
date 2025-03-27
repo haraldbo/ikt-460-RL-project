@@ -12,7 +12,6 @@ class ExplosionRenderer:
 
     def __init__(self):
         self.frame = 0
-        self.images = []
         self.max_frames = 100
 
     def reset(self):
@@ -105,12 +104,12 @@ class EnvironmentRenderer:
 
         surface.fill(
             (160, 140, 100),  # Ground color
-            (0, surface.get_height() - environment.ground_line,
+            (0, surface.get_height() - 10,
              surface.get_width(), surface.get_height())
         )
 
         r = 32
-        landing_area = environment.landing_area
+        landing_area = (environment.map.width//2, 10)
         pygame.draw.circle(
             surface, (0, 255, 0), (landing_area[0] + r, surface.get_height() - landing_area[1]), radius=1)
         pygame.draw.circle(
@@ -221,7 +220,7 @@ def save_animation(frames: list[pygame.Surface]):
 
 
 def spacecraft_has_exploded(environment: Environment):
-    is_far_from_landing_site = environment.get_distance_to_landing_site() > 100
+    is_far_from_landing_site = 10 > 100
     too_high_velocity = np.fabs(
         environment.angular_velocity) > 0.5 or environment.get_velocity() > 10
     too_high_angle = np.fabs(environment.angle) > 0.1
@@ -229,9 +228,9 @@ def spacecraft_has_exploded(environment: Environment):
 
 
 def start_visualization(initial_environment: Environment, agent: Agent, fps=100, save_animation_frames=False):
-    clock = pygame.time.Clock()
 
     environment = copy.copy(initial_environment)
+    clock = pygame.time.Clock()
     pygame.init()
     pygame.font.init()
 
@@ -241,12 +240,12 @@ def start_visualization(initial_environment: Environment, agent: Agent, fps=100,
 
     pygame.display.set_caption("Spacecraft control")
 
-    jet_renderer = RocketJetRenderer()
+    # jet_renderer = RocketJetRenderer()
     spacecraft_renderer = SpacecraftRenderer(render_collision_vertices=False)
     background_renderer = EnvironmentRenderer()
     info_renderer = InfoRenderer(font)
     explosion_renderer = ExplosionRenderer()
-    dust_renderer = DustRenderer()
+    # dust_renderer = DustRenderer()
 
     animation_frames = []
     while True:
@@ -265,7 +264,7 @@ def start_visualization(initial_environment: Environment, agent: Agent, fps=100,
                     print("Reseting")
                     environment = copy.copy(initial_environment)
                     explosion_renderer.reset()
-                    dust_renderer.reset()
+                    # dust_renderer.reset()
                     animation_frames.clear()
                     agent.reset()
                     continue
@@ -285,10 +284,10 @@ def start_visualization(initial_environment: Environment, agent: Agent, fps=100,
         if has_exploded:
             explosion_renderer.render(world_surface, environment)
         else:
-            if environment.thrust_level > 0:
-                jet_renderer.render(world_surface, environment)
+            # if environment.thrust_level > 0:
+            # jet_renderer.render(world_surface, environment)
             spacecraft_renderer.render(world_surface, environment)
-            dust_renderer.render(world_surface, environment)
+            # dust_renderer.render(world_surface, environment)
 
         agent.render(world_surface)
 
