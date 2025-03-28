@@ -87,24 +87,28 @@ class SpacecraftGym(gym.Env):
             -max_dist,  # delta x
             -max_dist,  # delta y
             -max_velocity,  # x velocity
+            -max_velocity,  # y velocity
             -1,  # cos angle
             -1,  # sin angle
             -max_angular_velocity,  # angular velocity
-            env.MIN_THRUST_LEVEL/Scalers.THRUST,  # thrust level
-            env.MIN_GIMBAL_LEVEL/Scalers.GIMBAL  # gimbal level
+            env.MIN_THRUST_LEVEL,  # thrust level
+            env.MIN_GIMBAL_LEVEL  # gimbal level
         ])
 
         high = np.array([
-            max_dist/Scalers.POSITION,  # delta x
-            max_dist/Scalers.POSITION,  # delta y
-            max_velocity/Scalers.VELOCITY,  # x velocity
-            max_velocity/Scalers.VELOCITY,  # y velocity
+            max_dist,  # delta x
+            max_dist,  # delta y
+            max_velocity,  # x velocity
+            max_velocity,  # y velocity
             1,  # cos angle
             1,  # sin angle
             max_angular_velocity,  # angular velocity
-            env.MAX_THRUST_LEVEL/Scalers.THRUST,  # thrust level
-            env.MAX_GIMBAL_LEVEL/Scalers.GIMBAL  # gimbal level
+            env.MAX_THRUST_LEVEL,  # thrust level
+            env.MAX_GIMBAL_LEVEL  # gimbal level
         ])
+
+        low = (low - Normalization.Landing.MEAN)/Normalization.Landing.SD
+        high = (high - Normalization.Landing.MEAN)/Normalization.Landing.SD
 
         self.observation_space = spaces.Box(low, high, dtype=np.float64)
         self.reset()
@@ -129,12 +133,7 @@ class LandingSpacecraftGym(SpacecraftGym):
 
     def _get_obs(self):
         state = [
-            (self.env.position[0] - self.landing_area[0]) /
-            Scalers.POSITION,  # delta x
-            (self.env.position[1] - self.landing_area[1]) /
-            Scalers.POSITION,  # delta y
-            (self.env.velocity[0])/Scalers.VELOCITY,  # x velocity
-            (self.env.velocity[1])/Scalers.VELOCITY,  # y velocity
+            self.env.position[0] - self.landing_area[0],  # delta x
             self.env.position[1] - self.landing_area[1],  # delta y
             self.env.velocity[0],  # x velocity
             self.env.velocity[1],  # y velocity
