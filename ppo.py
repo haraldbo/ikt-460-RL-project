@@ -1,4 +1,4 @@
-from gyms import LandingSpacecraftGym, Scalers
+from gyms import LandingSpacecraftGym, Normalization
 from spacecraft import Environment
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3 import PPO, DDPG
@@ -8,24 +8,25 @@ from common import Settings, Agent
 
 class PPOLandingAgent(Agent):
 
-    def __init__(self, model: PPO):
+    def __init__(self):
         super().__init__()
-        self.model = model
+        self.model = PPO.load(Settings.PPO_LANDER_BEST /
+                              "best_model", device="cpu")
 
     def get_action(self, env: Environment):
         state = np.array([
-            (env.position[0] - env.map.width//2) /
-            Scalers.POSITION,  # delta x
-            (env.position[1] - 10) /
-            Scalers.POSITION,  # delta y
-            env.velocity[0]/Scalers.VELOCITY,  # x velocity
-            env.velocity[1]/Scalers.VELOCITY,  # y velocity
+            (env.position[0] - env.map.width//2),  # delta x
+            (env.position[1] - 10),  # delta y
+            env.velocity[0],  # x velocity
+            env.velocity[1],  # y velocity
             np.cos(env.angle),  # cos angle
             np.sin(env.angle),  # sin angle
             env.angular_velocity,  # angular velocity
-            env.thrust_level/Scalers.THRUST,  # thrust level
-            env.gimbal_level/Scalers.GIMBAL  # gimbal level
+            env.thrust_level,  # thrust level
+            env.gimbal_level  # gimbal level
         ])
+
+        state = (state - Normalization.Landing.MEAN)/Normalization.Landing.SD
         action_idx, _ = self.model.predict(state, deterministic=True)
         return env.action_space[action_idx.item()]
 

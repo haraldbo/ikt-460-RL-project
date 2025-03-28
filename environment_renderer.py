@@ -18,6 +18,7 @@ class Renderer:
         self.render_image = None
         self.top = 0
         self.left = 0
+        self.font = pygame.font.SysFont("", size=16)
 
     def _tile_to_color(self, tile: MapTile):
         if tile == MapTile.AIR:
@@ -120,6 +121,26 @@ class Renderer:
             jet_width = int(1 + 3 * env.thrust_level/env.MAX_THRUST_LEVEL)
             pygame.draw.line(self.render_image, color,
                              src, dest, width=jet_width)
+
+    def render_spacecraft_information(self, environment: Environment, surface: Surface):
+        """
+        Renders spacecraft information onto the surface
+        """
+
+        info = {
+            "Position": (round(environment.position[0], 3), round(environment.position[1], 3)),
+            "Velocity": (round(environment.velocity[0], 3), round(environment.velocity[1], 3)),
+            "Angle": round(environment.angle, 3),
+            "Angular Velocity":  round(environment.angular_velocity, 3)
+        }
+
+        y_loc = 0
+        for k, v in info.items():
+
+            text = f"{k}: {v}"
+            font_surface = self.font.render(text, False, (255, 255, 255))
+            surface.blit(font_surface, dest=(20, 20 + y_loc))
+            y_loc += self.font.size(text)[1]
 
     def render(self, environment: Environment):
         """

@@ -7,7 +7,38 @@ import numpy as np
 
 # It is recommended to normalize the environment
 # https://stable-baselines.readthedocs.io/en/master/guide/rl_tips.html#tips-and-tricks-when-creating-a-custom-environment
-class Scalers:
+class Normalization:
+    # These mean and sd values were found by gathering running mean/variance during training of an agent with the PPO algorithm.
+    # - They are likely dependent on the initial configuration of the environment (See the reset method) and algorithm.
+    # - They seem to work quite well, but that is all. They should not be used for anything serious.
+    class Landing:
+        MEAN = np.array([
+            0,  # delta x
+            50,  # delta y
+            0,  # x velocity
+            -2,  # y velocity
+            1,  # cos (angle)
+            0,  # sin(angle)
+            0,  # angular velocity
+            3,  # thrust level
+            0,  # gimbal level
+        ])
+
+        SD = np.array([
+            45,  # delta x
+            19,  # delta y
+            8,  # delta x
+            5,  # delta y
+            0.2,  # cos(angle)
+            0.3,  # sin(angle)
+            0.14,  # angular velocity
+            1.14,  # thrust level
+            2,  # gimbal level
+        ])
+
+    class Hoovering:
+        pass
+
     POSITION = 100
     VELOCITY = 50
     THRUST = Environment.MAX_THRUST_LEVEL
@@ -50,13 +81,12 @@ class SpacecraftGym(gym.Env):
         # Probably won't exceed these values
         max_velocity = 60
         max_angular_velocity = 2 * np.pi
-        max_dist = 200
+        max_dist = 400
 
         low = np.array([
-            -max_dist/Scalers.POSITION,  # delta x
-            -max_dist/Scalers.POSITION,  # delta y
-            -max_velocity/Scalers.VELOCITY,  # x velocity
-            -max_velocity/Scalers.VELOCITY,  # y velocity
+            -max_dist,  # delta x
+            -max_dist,  # delta y
+            -max_velocity,  # x velocity
             -1,  # cos angle
             -1,  # sin angle
             -max_angular_velocity,  # angular velocity
@@ -105,39 +135,79 @@ class LandingSpacecraftGym(SpacecraftGym):
             Scalers.POSITION,  # delta y
             (self.env.velocity[0])/Scalers.VELOCITY,  # x velocity
             (self.env.velocity[1])/Scalers.VELOCITY,  # y velocity
+            self.env.position[1] - self.landing_area[1],  # delta y
+            self.env.velocity[0],  # x velocity
+            self.env.velocity[1],  # y velocity
             np.cos(self.env.angle),  # cos angle
             np.sin(self.env.angle),  # sin angle
             self.env.angular_velocity,  # angular velocity
-            self.env.thrust_level/Scalers.THRUST,  # thrust level
-            self.env.gimbal_level/Scalers.GIMBAL  # gimbal level
+            self.env.thrust_level,  # thrust level
+            self.env.gimbal_level  # gimbal level
         ]
         return np.array(state, dtype=np.float64)
 
-    def step(self, action_idx):
-        action = self.env.action_space[action_idx]
-        self.env.step(action)
-        flight_ended = self.env.state == self.env.STATE_ENDED
-        observation = self._get_obs()
+    def _calculate_reward(self, old_obs: np.ndarray, new_obs: np.ndarray, flight_ended: bool):
+        old_distance = np.sqrt(old_obs[0] ** 2 + old_obs[1] ** 2)
+        new_distance = np.sqrt(new_obs[0] ** 2 + new_obs[1] ** 2)
 
-        # Landing reward
+        old_velocity = np.sqrt(old_obs[2] ** 2 + old_obs[3] ** 2)
+        new_velocity = np.sqrt(new_obs[2] ** 2 + new_obs[3] ** 2)
+
+        old_angular_velocity = old_obs[6]
+        new_angular_velocity = new_obs[6]
+
+        new_angle = np.arctan2(new_obs[5], new_obs[4])
+
+        delta_velocity = new_velocity - old_velocity
+        delta_angular_velocity = new_angular_velocity - old_angular_velocity
+        delta_distance = new_distance - old_distance
+
+        reward = 0
+        reward -= 100 * delta_distance
+        reward -= 100 * delta_velocity
+        reward -= 100 * delta_angular_velocity
 
         if flight_ended:
-            distance_penalty = self.env.get_distance_to(
-                self.env.map.width//2, 10)
+            reward += 100
+
+            reward -= 100 * new_distance
+            reward -= 100 * new_velocity
+            reward -= 100 * new_angular_velocity
+            reward -= 100 * new_angle
+
+        return reward
+
+    def step(self, action_idx):
+        action = self.env.action_space[action_idx]
+        old_obs = self._get_obs()
+        self.env.step(action)
+
+        new_obs = self._get_obs()
+
+        new_obs = (new_obs - Normalization.Landing.MEAN) / \
+            Normalization.Landing.SD
+        old_obs = (old_obs - Normalization.Landing.MEAN) / \
+            Normalization.Landing.SD
+
+        flight_ended = self.env.state == self.env.STATE_ENDED
+        # reward = self._calculate_reward(old_obs, new_obs, flight_ended)
+
+        if flight_ended:
+            distance_penalty = self.env.get_distance_to(*self.landing_area)
             velocity_penalty = self.env.get_velocity() * 5
             angle_penalty = np.fabs(self.env.angle) * 15
             angular_velocity_penalty = np.fabs(self.env.angular_velocity) * 15
             reward = 100 - (distance_penalty + angle_penalty +
                             velocity_penalty + angular_velocity_penalty)
         else:
+            # reward = -self.env.get_distance_to(*self.landing_area) * 1e-2
             reward = -0.05
 
         info = {}
 
         terminated = flight_ended
         truncated = self.env.steps >= 200
-
-        return observation, reward, terminated, truncated, info
+        return new_obs, reward, terminated, truncated, info
 
     def reset(self, seed=None, options=None):
         self.env.reset()
@@ -150,7 +220,7 @@ class LandingSpacecraftGym(SpacecraftGym):
         self.env.velocity = (np.random.uniform(-10, 10),
                              np.random.uniform(-10, 10))
         self.env.angle = np.random.uniform(-np.pi/4, np.pi/4)
-        self.env.angular_velocity = np.random.uniform(-0.4, 0.4)
+        self.env.angular_velocity = np.random.uniform(-0.2, 0.2)
 
         # And with a random rocket engine configuration
         self.env.thrust_level = np.random.randint(

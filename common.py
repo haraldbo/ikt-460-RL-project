@@ -15,9 +15,15 @@ class Settings:
     PPO_CONTROL_BEST = PPO_SAVE_DIR / "control" / "best"
     PPO_CONTROL_CHECKPOINT = PPO_SAVE_DIR / "control" / "checkpoint"
 
+    DQN_SAVE_DIR = SAVES_DIR / "dqn"
+    DQN_LANDER_BEST = DQN_SAVE_DIR / "lander" / "best"
+    DQN_LANDER_CHECKPOINT = DQN_SAVE_DIR / "lander" / "checkpoint"
+    DQN_CONTROL_BEST = DQN_SAVE_DIR / "control" / "best"
+    DQN_CONTROL_CHECKPOINT = DQN_SAVE_DIR / "control" / "checkpoint"
+
     SIMULATION_FPS = 30
-    SIMULATION_FRAME_SIZE = (600, 600)
-    RENDERING_VIEWPORT_SIZE = (512, 512)
+    SIMULATION_FRAME_SIZE = (800, 800)
+    RENDERING_VIEWPORT_SIZE = (256, 256)
     RENDERING_SPACECRAFT_DEBUGGING = True
     RENDER_SPACECRAFT_INFORMATION = True
 

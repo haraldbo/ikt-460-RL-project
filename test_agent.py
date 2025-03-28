@@ -5,7 +5,8 @@ from common import Settings
 from copy import copy
 from common import Agent
 from ppo import PPOLandingAgent
-from stable_baselines3 import PPO
+from dqn import DQNLandingAgent
+from stable_baselines3 import PPO, DQN
 
 
 def test_agent(agent: Agent, init_env: Environment):
@@ -28,7 +29,10 @@ def test_agent(agent: Agent, init_env: Environment):
 
         render_img = renderer.render(env)
 
-        window_img = pygame.transform.scale(render_img, size=window.get_size())
+        window_img = pygame.transform.scale(render_img, window.get_size())
+
+        if Settings.RENDER_SPACECRAFT_INFORMATION:
+            renderer.render_spacecraft_information(env, window_img)
 
         window.blit(window_img, dest=(0, 0))
 
@@ -41,8 +45,7 @@ def test_agent(agent: Agent, init_env: Environment):
 
 
 if __name__ == "__main__":
-    landing_agent = PPOLandingAgent(
-        PPO.load(Settings.PPO_LANDER_BEST / "best_model", device="cpu"))
+    landing_agent = PPOLandingAgent()
     init_env = Environment(time_step_size=Settings.TIME_STEP_SIZE)
-    init_env.position = (init_env.map.width//2-250, 10 + 300)
+    init_env.position = (init_env.map.width//2 - 100, 10 + 100)
     test_agent(landing_agent, init_env)
