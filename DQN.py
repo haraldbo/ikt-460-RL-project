@@ -8,9 +8,10 @@ from common import Settings, Agent
 
 class DQNLandingAgent(Agent):
 
-    def __init__(self, model: DQN):
+    def __init__(self):
         super().__init__()
-        self.model = model
+        self.model = DQN.load(Settings.DQN_LANDER_BEST /
+                              "best_model", device="cpu")
 
     def get_action(self, env: Environment):
         state = np.array([
