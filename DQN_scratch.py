@@ -10,7 +10,7 @@ from collections import namedtuple, deque
 from itertools import count
 import random
 import time
-
+from copy import copy
 from torch.utils.tensorboard import SummaryWriter
 
 
@@ -22,6 +22,7 @@ class DQN:
 
     def __init__(self, env: SpacecraftGym):
         self.env = env
+        self.eval_env = copy(env)
         self.discount_rate = 0.99
         self.memory = deque(maxlen=10_000)
         self.epsilon_start = 1
@@ -31,6 +32,7 @@ class DQN:
         self.batch_size = 32
         self.tau = 0.5
         hidden_features = 64
+        self.n_evaluation_episodes = 100
         self.policy_net = nn.Sequential(
             nn.Linear(env.observation_space.shape[0], hidden_features),
             nn.ReLU(),
@@ -50,8 +52,8 @@ class DQN:
 
         self.criterion = torch.nn.SmoothL1Loss()
 
-    def select_action(self, state):
-        if random.random() > self.epsilon:
+    def select_action(self, state, deterministic=False):
+        if random.random() > self.epsilon or deterministic:
             with torch.no_grad():
                 return torch.argmax(self.policy_net(torch.tensor(state, dtype=torch.float)).detach()).item()
         else:
@@ -107,7 +109,7 @@ class DQN:
 
         loss.backward()
 
-        torch.nn.utils.clip_grad_value_(self.policy_net.parameters(), 1)
+        torch.nn.utils.clip_grad_value_(self.policy_net.parameters(), 10)
 
         self.optimizer.step()
 
@@ -125,6 +127,27 @@ class DQN:
 
         self.target_net.load_state_dict(target_net_state_dict)
 
+    def _evaluate_model(self):
+        """
+        Evaluation policy network on the eval environment
+        """
+        rewards = []
+        episode_lengths = []
+        for e in range(self.n_evaluation_episodes):
+            state, _ = self.eval_env.reset()
+            reward_sum = 0
+            for t in count():
+                action = self.select_action(state, deterministic=True)
+                next_state, reward, terminated, truncated, _ = self.eval_env.step(
+                    action)
+                state = next_state
+                reward_sum += reward
+                if terminated or truncated:
+                    break
+            episode_lengths.append(t)
+            rewards.append(reward_sum)
+        return np.mean(rewards), np.mean(episode_lengths)
+
     def train(self, n_episodes):
         run_name = "DQN_" + time.strftime("%Y%m%d_%H%M%S")
         writer = SummaryWriter(log_dir="tensorboard_logs/" + run_name)
@@ -137,6 +160,7 @@ class DQN:
             state, _ = self.env.reset()
             reward_sum = 0
             episode_step_count = 0
+
             if self.epsilon > self.epsilon_end:
                 self.epsilon *= self.epsilon_decay
             else:
@@ -171,6 +195,9 @@ class DQN:
                     episode_count += 1
                     break
 
+            mean_reward, mean_length = self._evaluate_model()
+            writer.add_scalar("Evaluation/mean reward", mean_reward, e)
+            writer.add_scalar("Evaluation/mean length", mean_length, e)
             writer.add_scalar("Training/epsilon", self.epsilon, e)
             writer.add_scalar("Episode/reward", reward_sum, e)
             writer.add_scalar("Episode/steps", episode_step_count, e)
@@ -188,6 +215,6 @@ if __name__ == "__main__":
     # Based on tutorial at https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
     init_env = Environment(time_step_size=Settings.TIME_STEP_SIZE)
     gym_env = LandingSpacecraftGym(init_env)
-    gym_env = gym.make("CartPole-v1")
+    # gym_env = gym.make("CartPole-v1")
     dqn = DQN(gym_env)
     dqn.train(100)

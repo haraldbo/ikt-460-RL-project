@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 class Settings:
-    TIME_STEP_SIZE = 1/2
+    TIME_STEP_SIZE = 1/5
 
     SAVES_DIR = Path(__file__).parent / "saves"
 

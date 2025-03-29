@@ -200,12 +200,13 @@ class LandingSpacecraftGym(SpacecraftGym):
                             velocity_penalty + angular_velocity_penalty)
         else:
             reward = 0
+            # Maybe add a positive but descent reward for staying in the air - that turns negative after a while
             reward -= self.env.get_distance_to(*self.landing_area) * 1e-2
             reward -= self.env.get_velocity() * 1e-1
             reward -= np.fabs(self.env.angle) * 10
 
-            reward -= self.env.velocity[1] / \
-                (np.fabs(self.env.position[1] - self.landing_area[1]) + 0.5)
+            # reward -= self.env.velocity[1] / \
+            #    (np.fabs(self.env.position[1] - self.landing_area[1]) + 0.5)
 
         info = {}
 
