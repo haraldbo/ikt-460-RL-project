@@ -127,12 +127,13 @@ class DQN:
 
         self.target_net.load_state_dict(target_net_state_dict)
 
-    def _evaluate_model(self):
+    def _evaluate_agent(self):
         """
         Evaluation policy network on the eval environment
         """
         rewards = []
         episode_lengths = []
+        final_reward = []
         for e in range(self.n_evaluation_episodes):
             state, _ = self.eval_env.reset()
             reward_sum = 0
@@ -143,10 +144,11 @@ class DQN:
                 state = next_state
                 reward_sum += reward
                 if terminated or truncated:
+                    final_reward.append(reward)
                     break
             episode_lengths.append(t)
             rewards.append(reward_sum)
-        return np.mean(rewards), np.mean(episode_lengths)
+        return np.mean(rewards), np.mean(final_reward), np.mean(episode_lengths)
 
     def train(self, n_episodes):
         run_name = "DQN_" + time.strftime("%Y%m%d_%H%M%S")
@@ -181,6 +183,11 @@ class DQN:
 
                 self.memory.append(experience)
 
+                if reward > 0:
+                    print(f"Great! ({reward})")
+                    for i in range(int(reward)):
+                        self.memory.append(experience)
+
                 loss = self._fit_policy_network()
                 writer.add_scalar("Training/loss", loss,
                                   policy_network_update_count)
@@ -195,9 +202,12 @@ class DQN:
                     episode_count += 1
                     break
 
-            mean_reward, mean_length = self._evaluate_model()
-            writer.add_scalar("Evaluation/mean reward", mean_reward, e)
-            writer.add_scalar("Evaluation/mean length", mean_length, e)
+            if e % 100:
+                mean_reward, final_reward, mean_length = self._evaluate_agent()
+                writer.add_scalar("Evaluation/mean reward", mean_reward, e)
+                writer.add_scalar(
+                    "Evaluation/mean final reward", final_reward, e)
+                writer.add_scalar("Evaluation/mean length", mean_length, e)
             writer.add_scalar("Training/epsilon", self.epsilon, e)
             writer.add_scalar("Episode/reward", reward_sum, e)
             writer.add_scalar("Episode/steps", episode_step_count, e)
