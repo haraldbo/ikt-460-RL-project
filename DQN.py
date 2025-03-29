@@ -44,7 +44,7 @@ def train_landing_agent(init_env: Environment):
     env = LandingSpacecraftGym(env=init_env)
 
     checkpoint_callback = CheckpointCallback(
-        save_freq=5000,
+        save_freq=100_000,
         save_path=Settings.DQN_LANDER_CHECKPOINT,
         name_prefix="dqn_landing",
         save_replay_buffer=True,
@@ -54,8 +54,8 @@ def train_landing_agent(init_env: Environment):
     eval_callback = EvalCallback(
         env,
         best_model_save_path=Settings.DQN_LANDER_BEST,
-        eval_freq=5000,
-        n_eval_episodes=100,
+        eval_freq=10_000,
+        n_eval_episodes=200,
         deterministic=True
     )
 
@@ -67,12 +67,10 @@ def train_landing_agent(init_env: Environment):
         gamma=1,
         buffer_size=4096 * 8,
         batch_size=128,
-        train_freq=4,
-        target_update_interval=4096,
-        tau=0.5,
         exploration_final_eps=0.01,
         exploration_fraction=0.5
     )
+
     model.learn(total_timesteps=2_000_000, callback=[
                 checkpoint_callback, eval_callback])
 

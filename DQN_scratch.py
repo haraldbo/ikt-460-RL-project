@@ -26,26 +26,27 @@ class DQN:
         self.memory = deque(maxlen=10_000)
         self.epsilon_start = 1
         self.epsilon_end = 0.01
-        self.epsilon_decay = 0.9999
+        self.epsilon_decay = 0.999
         self.epsilon = self.epsilon_start
         self.batch_size = 32
-        self.tau = 0.1
+        self.tau = 0.5
+        hidden_features = 64
         self.policy_net = nn.Sequential(
-            nn.Linear(env.observation_space.shape[0], 32),
+            nn.Linear(env.observation_space.shape[0], hidden_features),
             nn.ReLU(),
-            nn.Linear(32, 32),
+            nn.Linear(hidden_features, hidden_features),
             nn.ReLU(),
-            nn.Linear(32, env.action_space.n)
+            nn.Linear(hidden_features, env.action_space.n)
         )
         self.target_net = nn.Sequential(
-            nn.Linear(env.observation_space.shape[0], 32),
+            nn.Linear(env.observation_space.shape[0], hidden_features),
             nn.ReLU(),
-            nn.Linear(32, 32),
+            nn.Linear(hidden_features, hidden_features),
             nn.ReLU(),
-            nn.Linear(32, env.action_space.n)
+            nn.Linear(hidden_features, env.action_space.n)
         )
         self.optimizer = optim.Adam(
-            self.policy_net.parameters(), lr=0.00001, amsgrad=True)
+            self.policy_net.parameters(), lr=0.0001, amsgrad=True)
 
         self.criterion = torch.nn.SmoothL1Loss()
 
@@ -61,18 +62,23 @@ class DQN:
         actions = []
         rewards = []
         next_states = []
+        not_final = []
         for experience in experiences:
             state, action, reward, next_state = experience
             states.append(state)
             actions.append(action)
             rewards.append(reward)
-            next_states.append(next_state)
+            if next_state is not None:
+                next_states.append(next_state)
+
+            not_final.append(next_state is not None)
 
         states = torch.tensor(np.array(states), dtype=torch.float32)
         actions = torch.tensor(actions, dtype=torch.long).unsqueeze(1)
-        rewards = torch.tensor(rewards, dtype=torch.float32).unsqueeze(1)
+        rewards = torch.tensor(rewards, dtype=torch.float32)
         next_states = torch.tensor(np.array(next_states), dtype=torch.float32)
-        return states, actions, rewards, next_states
+        not_final = torch.tensor(not_final)
+        return states, actions, rewards, next_states, not_final
 
     def _fit_policy_network(self):
         if len(self.memory) < self.batch_size:
@@ -80,17 +86,19 @@ class DQN:
 
         experiences = random.sample(self.memory, self.batch_size)
 
-        states, actions, rewards, next_states = self._convert_to_batch(
+        states, actions, rewards, next_states, not_final = self._convert_to_batch(
             experiences)
 
         state_action_values = self.policy_net(states).gather(1, actions)
 
+        next_state_action_values = torch.zeros(self.batch_size)
         with torch.no_grad():
-            next_state_action_values = self.target_net(
-                next_states).detach().max(1).values.unsqueeze(1)
+            next_state_action_values[not_final] = self.target_net(
+                next_states).detach().max(1).values
 
+        next_state_action_values = next_state_action_values
         expected_state_action_values = (
-            next_state_action_values * self.discount_rate) + rewards
+            rewards + next_state_action_values * self.discount_rate).unsqueeze(1)
 
         loss = self.criterion(state_action_values,
                               expected_state_action_values)
@@ -142,6 +150,9 @@ class DQN:
                 reward_sum += reward
                 step_count += 1
 
+                if terminated:
+                    next_state = None
+
                 experience = Experience(state, action, reward, next_state)
 
                 self.memory.append(experience)
@@ -151,7 +162,8 @@ class DQN:
                                   policy_network_update_count)
                 policy_network_update_count += 1
 
-                self._update_target_network()
+                if step_count % 1000 == 0:
+                    self._update_target_network()
 
                 state = next_state
 

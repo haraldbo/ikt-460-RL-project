@@ -199,8 +199,13 @@ class LandingSpacecraftGym(SpacecraftGym):
             reward = 100 - (distance_penalty + angle_penalty +
                             velocity_penalty + angular_velocity_penalty)
         else:
-            # reward = -self.env.get_distance_to(*self.landing_area) * 1e-2
-            reward = -0.05
+            reward = 0
+            reward -= self.env.get_distance_to(*self.landing_area) * 1e-2
+            reward -= self.env.get_velocity() * 1e-1
+            reward -= np.fabs(self.env.angle) * 10
+
+            reward -= self.env.velocity[1] / \
+                (np.fabs(self.env.position[1] - self.landing_area[1]) + 0.5)
 
         info = {}
 
@@ -212,14 +217,14 @@ class LandingSpacecraftGym(SpacecraftGym):
         self.env.reset()
 
         # Position spacecraft at some random location above the landing area:
-        self.env.position = (self.landing_area[0] + np.random.randint(-50, 50),
-                             self.landing_area[1] + np.random.randint(30, 100))
+        self.env.position = (self.landing_area[0] + np.random.randint(-20, 20),
+                             self.landing_area[1] + np.random.randint(40, 80))
 
         # With a bit of velocity, angle and angular velocity
-        self.env.velocity = (np.random.uniform(-10, 10),
-                             np.random.uniform(-10, 10))
-        self.env.angle = np.random.uniform(-np.pi/4, np.pi/4)
-        self.env.angular_velocity = np.random.uniform(-0.2, 0.2)
+        self.env.velocity = (np.random.uniform(-5, 5),
+                             np.random.uniform(-5, 5))
+        self.env.angle = np.random.uniform(-np.pi/8, np.pi/8)
+        self.env.angular_velocity = np.random.uniform(-0.1, 0.1)
 
         # And with a random rocket engine configuration
         self.env.thrust_level = np.random.randint(
