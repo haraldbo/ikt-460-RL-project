@@ -132,7 +132,9 @@ class Renderer:
             "Position": (round(environment.position[0], 3), round(environment.position[1], 3)),
             "Velocity": (round(environment.velocity[0], 3), round(environment.velocity[1], 3)),
             "Angle": round(environment.angle, 3),
-            "Angular Velocity":  round(environment.angular_velocity, 3)
+            "Angular Velocity":  round(environment.angular_velocity, 3),
+            "Thrust":  round(environment.thrust_level, 3),
+            "Gimbal":  round(environment.gimbal_level, 3)
         }
 
         y_loc = 0
