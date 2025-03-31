@@ -20,6 +20,12 @@ class Settings:
     DQN_LANDER_CHECKPOINT = DQN_SAVE_DIR / "lander" / "checkpoint"
     DQN_CONTROL_BEST = DQN_SAVE_DIR / "control" / "best"
     DQN_CONTROL_CHECKPOINT = DQN_SAVE_DIR / "control" / "checkpoint"
+    
+    DDPG_SAVE_DIR = SAVES_DIR / "ddpg"
+    DDPG_LANDER_BEST = DDPG_SAVE_DIR / "lander" / "best"
+    DDPG_LANDER_CHECKPOINT = DDPG_SAVE_DIR / "lander" / "checkpoint"
+    DDPG_CONTROL_BEST = DDPG_SAVE_DIR / "control" / "best"
+    DDPG_CONTROL_CHECKPOINT = DDPG_SAVE_DIR / "control" / "checkpoint"
 
     SIMULATION_FPS = 30
     SIMULATION_FRAME_SIZE = (800, 800)

@@ -52,18 +52,40 @@ class SpacecraftGym(gym.Env):
         "render_fps": 1,
     }
 
-    def __init__(self, env: Environment):
+    def __init__(self, env: Environment, discrete_actions=True):
         super().__init__()
         self.env = env
 
-        """
-        The actions:
-            - thruster: decrease, do nothing, increase 
-            - gimbal: decrease, do nothing, increase
+        self.discrete_actions = discrete_actions
+        self.discrete_action_space = []
+        for gimbal_action in [-1, 0, 1]:
+            for thrust_action in [-1, 0, 1]:
+                self.discrete_action_space.append(
+                    (gimbal_action, thrust_action))
 
-        9 in total: [-1, -1], [0, -1], ... , [1, 1] 
-        """
-        self.action_space = spaces.Discrete(len(self.env.action_space))
+        if discrete_actions:
+            """
+            The actions:
+                - thruster: decrease, do nothing, increase 
+                - gimbal: decrease, do nothing, increase
+
+            9 in total: [-1, -1], [0, -1], ... , [1, 1] 
+            """
+            self.action_space = spaces.Discrete(
+                len(self.discrete_action_space))
+
+        else:
+            action_low = np.array([
+                -1,  # gimbal
+                -1  # thrust
+            ])
+
+            action_high = np.array([
+                1,  # gimbal
+                1  # thrust
+            ])
+            self.action_space = spaces.Box(
+                action_low, action_high, dtype=np.float64)
 
         """
         The observation:
@@ -83,7 +105,7 @@ class SpacecraftGym(gym.Env):
         max_angular_velocity = 2 * np.pi
         max_dist = 400
 
-        low = np.array([
+        obs_low = np.array([
             -max_dist,  # delta x
             -max_dist,  # delta y
             -max_velocity,  # x velocity
@@ -95,7 +117,7 @@ class SpacecraftGym(gym.Env):
             env.MIN_GIMBAL_LEVEL  # gimbal level
         ])
 
-        high = np.array([
+        obs_high = np.array([
             max_dist,  # delta x
             max_dist,  # delta y
             max_velocity,  # x velocity
@@ -107,10 +129,13 @@ class SpacecraftGym(gym.Env):
             env.MAX_GIMBAL_LEVEL  # gimbal level
         ])
 
-        low = (low - Normalization.Landing.MEAN)/Normalization.Landing.SD
-        high = (high - Normalization.Landing.MEAN)/Normalization.Landing.SD
+        obs_low = (obs_low - Normalization.Landing.MEAN) / \
+            Normalization.Landing.SD
+        obs_high = (obs_high - Normalization.Landing.MEAN) / \
+            Normalization.Landing.SD
 
-        self.observation_space = spaces.Box(low, high, dtype=np.float64)
+        self.observation_space = spaces.Box(
+            obs_low, obs_high, dtype=np.float64)
         self.reset()
 
     def render(self):
@@ -127,9 +152,9 @@ class LandingSpacecraftGym(SpacecraftGym):
         "render_fps": 1,
     }
 
-    def __init__(self, env):
+    def __init__(self, env, discrete_actions=True):
         self.landing_area = (env.map.width//2, 10)
-        super().__init__(env)
+        super().__init__(env, discrete_actions=discrete_actions)
 
     def _get_obs(self):
         state = [
@@ -176,9 +201,14 @@ class LandingSpacecraftGym(SpacecraftGym):
 
         return reward
 
-    def step(self, action_idx):
-        action = self.env.action_space[action_idx]
+    def step(self, action_input):
+        if self.discrete_actions:
+            action = self.discrete_action_space[action_input]
+        else:
+            action = action_input
+
         old_obs = self._get_obs()
+
         self.env.step(action)
 
         new_obs = self._get_obs()
@@ -199,8 +229,8 @@ class LandingSpacecraftGym(SpacecraftGym):
             reward = 100 - (distance_penalty + angle_penalty +
                             velocity_penalty + angular_velocity_penalty)
         else:
-            reward = 0
-            # Maybe add a positive but descent reward for staying in the air - that turns negative after a while
+            reward = -0.01
+            # Maybe add a positive but descending reward for staying in the air - that turns negative after a while
             reward -= self.env.get_distance_to(*self.landing_area) * 1e-2
             reward -= self.env.get_velocity() * 1e-1
             reward -= np.fabs(self.env.angle) * 10

@@ -92,6 +92,7 @@ class Renderer:
         # TODO: Check if has collided with solid
         if env.thrust_level == 0:
             return
+        
         engine_angle = -np.pi/2 - env.get_engine_local_angle() + env.angle
         radius = max(14, 8 + env.thrust_level)
 
@@ -102,7 +103,7 @@ class Renderer:
         for i in range(np.random.randint(5, 20)):
             flame_start = (x_dest + radius * np.cos(-np.pi/2 + env.angle),
                            y_dest - radius * np.sin(-np.pi/2 + env.angle))
-            flame_length = np.random.randint(10, 40) + env.thrust_level * 2
+            flame_length = int(np.random.randint(10, 40) + env.thrust_level * 2)
             flame_end = (flame_start[0] + np.cos(engine_angle) * flame_length,
                          flame_start[1] - np.sin(engine_angle) * flame_length
                          )
@@ -114,7 +115,7 @@ class Renderer:
             src = (flame_start[0] + np.random.randint(-1, 1),
                    flame_start[1] + np.random.randint(-1, 1))
 
-            spray = min(env.thrust_level, 3)
+            spray = min(np.ceil(env.thrust_level), 3)
             dest = [flame_end[0] + np.random.randint(-spray, spray),
                     flame_end[1] + np.random.randint(-spray, spray)]
 

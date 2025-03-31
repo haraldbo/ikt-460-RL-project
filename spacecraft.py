@@ -55,10 +55,8 @@ class Environment:
         self.min_thrust = -0.7 * self.mass * gravity
         self.max_gimbal_level = self.MAX_GIMBAL_LEVEL
 
-        self.action_space = []
-        for gimbal_action in range(-1, 2):
-            for thrust_action in range(-1, 2):
-                self.action_space.append((gimbal_action, thrust_action))
+        self.action_gimbal_range = (-1, 1)
+        self.action_thrust_range = (-1, 1)
 
         self.reset()
 
@@ -86,6 +84,10 @@ class Environment:
         return (self.gimbal_level / self.MAX_GIMBAL_LEVEL) * self.max_engine_gimbal_angle
 
     def _get_thrust_velocity_change(self):
+        """
+        Returns velocity change of center of mass (COM) and the angular velocity change around COM:
+        - x_velocity_change, y_velocity_change, angular_velocity_change
+        """
         theta = self.get_engine_absolute_angle()
 
         if self.thrust_level > 0:
@@ -150,15 +152,21 @@ class Environment:
     def has_lifted_off(self):
         return self.state in [self.STATE_FLIGHT, self.STATE_ENDED]
 
-    def _perform_action(self, action):
-        if action not in self.action_space:
-            raise ValueError(f"Invalid action {action}")
+    def validate_action(self, gimbal_action, thrust_action):
+        if gimbal_action < self.action_gimbal_range[0] or gimbal_action > self.action_gimbal_range[1]:
+            raise ValueError(f"Invalid gimbal action: {gimbal_action}")
 
-        self.gimbal_level = max(-self.MAX_GIMBAL_LEVEL, min(
-            self.gimbal_level + action[0], self.MAX_GIMBAL_LEVEL))
+        if thrust_action < self.action_thrust_range[0] or thrust_action > self.action_thrust_range[1]:
+            raise ValueError(f"Invalid thrust action: {thrust_action}")
 
+    def _perform_action(self, action: tuple[float, float]):
+        gimbal_action, thrust_action = action
+        self.validate_action(gimbal_action, thrust_action)
+
+        self.gimbal_level = max(-self.MAX_GIMBAL_LEVEL,
+                                min(self.gimbal_level + gimbal_action, self.MAX_GIMBAL_LEVEL))
         self.thrust_level = max(self.MIN_THRUST_LEVEL, min(
-            self.thrust_level + action[1], self.MAX_THRUST_LEVEL))
+            self.thrust_level + thrust_action, self.MAX_THRUST_LEVEL))
 
     def _get_y_velocity(self):
         y_velocity_gravity = self.gravity * self.time_step_size
@@ -188,7 +196,7 @@ class Environment:
         self.angle = self.angle + avg_angle_velo * self.time_step_size
         self.angular_velocity = angular_velocity
 
-    def step(self, action):
+    def step(self, action: tuple[float, float]):
         if self.state == self.STATE_FLIGHT:
             self._perform_action(action)
             self._update_flight_variables()

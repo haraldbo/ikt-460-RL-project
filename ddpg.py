@@ -1,19 +1,17 @@
 from gyms import LandingSpacecraftGym, Normalization
 from spacecraft import Environment
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
-from stable_baselines3 import PPO, DDPG
+from stable_baselines3 import DDPG
 import numpy as np
 from common import Settings, Agent
 
 
-class PPOLandingAgent(Agent):
+class DDPGLandingAgent(Agent):
 
     def __init__(self):
         super().__init__()
-        self.action_space = LandingSpacecraftGym(
-            env=Environment()).discrete_action_space
-        self.model = PPO.load(Settings.PPO_LANDER_BEST /
-                              "best_model", device="cpu")
+        self.model = DDPG.load(Settings.DDPG_LANDER_BEST /
+                               "best_model", device="cpu")
 
     def get_action(self, env: Environment):
         state = np.array([
@@ -29,8 +27,8 @@ class PPOLandingAgent(Agent):
         ])
 
         state = (state - Normalization.Landing.MEAN)/Normalization.Landing.SD
-        action_idx, _ = self.model.predict(state, deterministic=True)
-        return self.action_space[action_idx]
+        action, _ = self.model.predict(state, deterministic=True)
+        return action
 
     def handle_event(self, event):
         pass
@@ -43,25 +41,25 @@ class PPOLandingAgent(Agent):
 
 
 def train_landing_agent(init_env: Environment):
-    env = LandingSpacecraftGym(env=init_env)
+    env = LandingSpacecraftGym(env=init_env, discrete_actions=False)
 
     checkpoint_callback = CheckpointCallback(
         save_freq=5000,
-        save_path=Settings.PPO_LANDER_CHECKPOINT,
-        name_prefix="ppo_landing",
+        save_path=Settings.DDPG_LANDER_CHECKPOINT,
+        name_prefix="ddpg_landing",
         save_replay_buffer=True,
         save_vecnormalize=True,
     )
 
     eval_callback = EvalCallback(
         env,
-        best_model_save_path=Settings.PPO_LANDER_BEST,
+        best_model_save_path=Settings.DDPG_LANDER_BEST,
         eval_freq=5000,
         n_eval_episodes=100,
         deterministic=True
     )
 
-    model = PPO(
+    model = DDPG(
         "MlpPolicy", env,
         verbose=0,
         device="cpu",
