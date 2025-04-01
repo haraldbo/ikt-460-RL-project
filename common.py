@@ -12,20 +12,20 @@ class Settings:
     PPO_SAVE_DIR = SAVES_DIR / "ppo"
     PPO_LANDER_BEST = PPO_SAVE_DIR / "lander" / "best"
     PPO_LANDER_CHECKPOINT = PPO_SAVE_DIR / "lander" / "checkpoint"
-    PPO_CONTROL_BEST = PPO_SAVE_DIR / "control" / "best"
-    PPO_CONTROL_CHECKPOINT = PPO_SAVE_DIR / "control" / "checkpoint"
+    PPO_HOVERING_BEST = PPO_SAVE_DIR / "hovering" / "best"
+    PPO_HOVERING_CHECKPOINT = PPO_SAVE_DIR / "hovering" / "checkpoint"
 
     DQN_SAVE_DIR = SAVES_DIR / "dqn"
     DQN_LANDER_BEST = DQN_SAVE_DIR / "lander" / "best"
     DQN_LANDER_CHECKPOINT = DQN_SAVE_DIR / "lander" / "checkpoint"
-    DQN_CONTROL_BEST = DQN_SAVE_DIR / "control" / "best"
-    DQN_CONTROL_CHECKPOINT = DQN_SAVE_DIR / "control" / "checkpoint"
+    DQN_HOVERING_BEST = DQN_SAVE_DIR / "hovering" / "best"
+    DQN_HOVERING_CHECKPOINT = DQN_SAVE_DIR / "hovering" / "checkpoint"
 
     DDPG_SAVE_DIR = SAVES_DIR / "ddpg"
     DDPG_LANDER_BEST = DDPG_SAVE_DIR / "lander" / "best"
     DDPG_LANDER_CHECKPOINT = DDPG_SAVE_DIR / "lander" / "checkpoint"
-    DDPG_CONTROL_BEST = DDPG_SAVE_DIR / "control" / "best"
-    DDPG_CONTROL_CHECKPOINT = DDPG_SAVE_DIR / "control" / "checkpoint"
+    DDPG_HOVERING_BEST = DDPG_SAVE_DIR / "hovering" / "best"
+    DDPG_HOVERING_CHECKPOINT = DDPG_SAVE_DIR / "hovering" / "checkpoint"
 
     SIMULATION_FPS = 30
     SIMULATION_FRAME_SIZE = (400, 400)

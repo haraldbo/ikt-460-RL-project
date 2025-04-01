@@ -2,20 +2,60 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-from gyms import SpacecraftGym, LandingSpacecraftGym
-import gymnasium as gym
+from gyms import SpacecraftGym, LandingSpacecraftGym, Normalization
 from spacecraft import Environment
-from common import Settings
+from common import Settings, Agent
 from collections import namedtuple, deque
 from itertools import count
 import random
 import time
 from copy import copy
 from torch.utils.tensorboard import SummaryWriter
+from pathlib import Path
 
 
 Experience = namedtuple(
     'Experience', ('state', 'action', 'reward', 'next_state'))
+
+
+class DQNLandingAgent(Agent):
+    def __init__(self, landing_area, policy_net):
+        self.landing_area = landing_area
+        self.policy_net = policy_net
+        self.policy_net.eval()
+        self.action_space = SpacecraftGym(env=Environment())\
+            .discrete_action_space
+        super().__init__()
+
+    def get_action(self, env: Environment):
+        observation = np.array([
+            (env.position[0] - self.landing_area[0]),  # delta x
+            (env.position[1] - self.landing_area[1]),  # delta y
+            env.velocity[0],  # x velocity
+            env.velocity[1],  # y velocity
+            np.cos(env.angle),  # cos angle
+            np.sin(env.angle),  # sin angle
+            env.angular_velocity,  # angular velocity
+            env.thrust_level,  # thrust level
+            env.gimbal_level  # gimbal level
+        ])
+
+        observation = (observation - Normalization.MEAN)/Normalization.SD
+
+        input = torch.stack([observation])
+        q_values = self.policy_net(input)
+        next_action = torch.argmax(q_values).item()
+        return self.action_space[next_action]
+
+
+class DQNHoveringAgent(Agent):
+    def __init__(self, hovering_point):
+        self.hovering_point = hovering_point
+        self.action_space = LandingSpacecraftGym(
+            env=Environment()).discrete_action_space
+
+    def get_action(self, environment):
+        raise NotImplementedError()
 
 
 class DQN:
@@ -23,16 +63,20 @@ class DQN:
     def __init__(self, env: SpacecraftGym):
         self.env = env
         self.eval_env = copy(env)
-        self.discount_rate = 0.99
-        self.memory = deque(maxlen=10_000)
+        self.eval_frequency = 50
+        self.eval_n_episodes = 100
+
         self.epsilon_start = 1
         self.epsilon_end = 0.01
         self.epsilon_decay = 0.999
         self.epsilon = self.epsilon_start
+
+        self.memory = deque(maxlen=10_000)
+        self.discount_rate = 0.99
         self.batch_size = 32
         self.tau = 0.5
+
         hidden_features = 64
-        self.n_evaluation_episodes = 100
         self.policy_net = nn.Sequential(
             nn.Linear(env.observation_space.shape[0], hidden_features),
             nn.ReLU(),
@@ -52,8 +96,17 @@ class DQN:
 
         self.criterion = torch.nn.SmoothL1Loss()
 
+    def _save(self, path):
+        torch.save(self.policy_net.state_dict(), path / f"policy_net.pt")
+        torch.save(self.target_net.state_dict(), path / f"target_net.pt")
+
+    def _load(self, path):
+        self.policy_net.load_state_dict(torch.load(path / "policy_net.pt"))
+        self.target_net.load_state_dict(torch.load(path / "target_net.pt"))
+
     def select_action(self, state, deterministic=False):
         if random.random() > self.epsilon or deterministic:
+            self.policy_net.eval()
             with torch.no_grad():
                 return torch.argmax(self.policy_net(torch.tensor(state, dtype=torch.float)).detach()).item()
         else:
@@ -85,6 +138,8 @@ class DQN:
     def _fit_policy_network(self):
         if len(self.memory) < self.batch_size:
             return 0
+
+        self.policy_net.train()
 
         experiences = random.sample(self.memory, self.batch_size)
 
@@ -134,7 +189,7 @@ class DQN:
         rewards = []
         episode_lengths = []
         final_reward = []
-        for e in range(self.n_evaluation_episodes):
+        for e in range(self.eval_n_episodes):
             state, _ = self.eval_env.reset()
             reward_sum = 0
             for t in count():
@@ -150,7 +205,7 @@ class DQN:
             rewards.append(reward_sum)
         return np.mean(rewards), np.mean(final_reward), np.mean(episode_lengths)
 
-    def train(self, n_episodes):
+    def train(self):
         run_name = "DQN_" + time.strftime("%Y%m%d_%H%M%S")
         writer = SummaryWriter(log_dir="tensorboard_logs/" + run_name)
 
@@ -158,7 +213,9 @@ class DQN:
         episode_count = 0
         policy_network_update_count = 0
 
-        for e in range(n_episodes * 1000):
+        highest_reward = -float('inf')
+
+        for e in count():
             state, _ = self.env.reset()
             reward_sum = 0
             episode_step_count = 0
@@ -204,6 +261,8 @@ class DQN:
 
             if e % 100:
                 mean_reward, final_reward, mean_length = self._evaluate_agent()
+                if mean_reward > highest_reward:
+                    self._save(Path(__file__).parent / run_name)
                 writer.add_scalar("Evaluation/mean reward", mean_reward, e)
                 writer.add_scalar(
                     "Evaluation/mean final reward", final_reward, e)
@@ -214,17 +273,10 @@ class DQN:
             writer.flush()
 
 
-def selct_action(model, state, epsilon):
-    if random.random() > epsilon:
-        return torch.argmax(model(torch.tensor(state, dtype=torch.float)))
-    else:
-        return random.randint(0, 8)
-
-
 if __name__ == "__main__":
     # Based on tutorial at https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
     init_env = Environment(time_step_size=Settings.TIME_STEP_SIZE)
     gym_env = LandingSpacecraftGym(init_env)
     # gym_env = gym.make("CartPole-v1")
     dqn = DQN(gym_env)
-    dqn.train(100)
+    dqn.train()

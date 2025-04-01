@@ -8,15 +8,16 @@ from common import Settings, Agent
 
 class DDPGLandingAgent(Agent):
 
-    def __init__(self):
+    def __init__(self, landing_area):
         super().__init__()
+        self.landing_area = landing_area
         self.model = DDPG.load(Settings.DDPG_LANDER_BEST /
                                "best_model", device="cpu")
 
     def get_action(self, env: Environment):
         state = np.array([
-            (env.position[0] - env.map.width//2),  # delta x
-            (env.position[1] - 10),  # delta y
+            (env.position[0] - self.landing_area[0]),  # delta x
+            (env.position[1] - self.landing_area[1]),  # delta y
             env.velocity[0],  # x velocity
             env.velocity[1],  # y velocity
             np.cos(env.angle),  # cos angle
@@ -26,7 +27,7 @@ class DDPGLandingAgent(Agent):
             env.gimbal_level  # gimbal level
         ])
 
-        state = (state - Normalization.Landing.MEAN)/Normalization.Landing.SD
+        state = (state - Normalization.MEAN)/Normalization.SD
         action, _ = self.model.predict(state, deterministic=True)
         return action
 
