@@ -23,10 +23,10 @@ class Normalization:
     ])
 
     SD = np.array([
-        100,  # delta x
-        100,  # delta y
-        20,  # velocity x
-        20,  # velocity y
+        50,  # delta x
+        50,  # delta y
+        10,  # velocity x
+        10,  # velocity y
         1,  # cos(angle)
         1,  # sin(angle)
         1,  # angular velocity
@@ -264,14 +264,13 @@ class HoveringSpacecraftGym(SpacecraftGym):
             velocity_penalty = self.env.get_velocity() * 1e-1
             angle_penalty = np.fabs(self.env.angle) * 10
             angular_velocity_penalty = np.fabs(self.env.angular_velocity) * 10
-            reward = 100 - \
-                (distance_penalty + angular_velocity_penalty +
-                 angle_penalty + velocity_penalty)
+            reward = 100 - (distance_penalty + velocity_penalty +
+                            angle_penalty + angular_velocity_penalty)
 
         info = {}
 
         terminated = flight_ended
-        truncated = self.env.steps >= 200
+        truncated = self.env.steps >= 100
         return new_obs, reward, terminated, truncated, info
 
     def reset(self, seed=None, options=None):
@@ -282,10 +281,10 @@ class HoveringSpacecraftGym(SpacecraftGym):
                              self.hovering_point[1] + np.random.randint(-50, 50))
 
         # With a bit of velocity, angle and angular velocity:
-        self.env.velocity = (np.random.uniform(-15, 15),
-                             np.random.uniform(-15, 15))
-        self.env.angle = np.random.uniform(-np.pi/4, np.pi/4)
-        self.env.angular_velocity = np.random.uniform(-0.3, 0.3)
+        self.env.velocity = (np.random.uniform(-10, 10),
+                             np.random.uniform(-10, 10))
+        self.env.angle = np.random.uniform(-np.pi/8, np.pi/8)
+        self.env.angular_velocity = np.random.uniform(-0.2, 0.2)
 
         # And with a random engine gimbal/thrust configuration:
         self.env.thrust_level = np.random.randint(

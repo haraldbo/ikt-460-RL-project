@@ -1,4 +1,4 @@
-from gyms import LandingSpacecraftGym, HoveringSpacecraftGym, Normalization
+from gyms import LandingSpacecraftGym, SpacecraftGym, HoveringSpacecraftGym, Normalization
 from spacecraft import Environment
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3 import PPO, DDPG
@@ -46,7 +46,7 @@ class PPOHoveringAgent(Agent):
 
     def __init__(self, hovering_point):
         self.hovering_point = hovering_point
-        self.action_space = LandingSpacecraftGym(
+        self.action_space = SpacecraftGym(
             env=Environment()).discrete_action_space
         self.model = PPO.load(Settings.PPO_HOVERING_BEST /
                               "best_model", device="cpu")
@@ -114,6 +114,7 @@ def train_hovering_agent(init_env: Environment):
     checkpoint_callback = CheckpointCallback(
         save_freq=5000,
         save_path=Settings.PPO_HOVERING_CHECKPOINT,
+
         name_prefix="ppo_hovering",
         save_replay_buffer=True,
         save_vecnormalize=True,

@@ -52,5 +52,5 @@ if __name__ == "__main__":
     hovering_agent = PPOHoveringAgent(hovering_point=hover_point)
     init_env.position = (hover_point[0], hover_point[1])
     print(hover_point)
-    init_env.angular_velocity = 0.1
+    init_env.angular_velocity = 0.0
     test_agent(hovering_agent, init_env)
