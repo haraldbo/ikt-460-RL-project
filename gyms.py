@@ -39,11 +39,6 @@ class Normalization:
     class Hoovering:
         pass
 
-    POSITION = 100
-    VELOCITY = 50
-    THRUST = Environment.MAX_THRUST_LEVEL
-    GIMBAL = Environment.MAX_GIMBAL_LEVEL
-
 
 class SpacecraftGym(gym.Env):
 

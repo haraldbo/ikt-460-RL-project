@@ -45,8 +45,9 @@ def test_agent(agent: Agent, init_env: Environment):
 
 
 if __name__ == "__main__":
+    # landing_agent = PPOLandingAgent()
     landing_agent = DDPGLandingAgent()
     init_env = Environment(time_step_size=Settings.TIME_STEP_SIZE)
-    init_env.position = (init_env.map.width//2 + 50, 10 + 100)
+    init_env.position = (init_env.map.width//2 + 0, 10 + 100)
     init_env.angular_velocity = 0.1
     test_agent(landing_agent, init_env)

@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 class Settings:
-    TIME_STEP_SIZE = 1/2
+    TIME_STEP_SIZE = 1/5
 
     SAVES_DIR = Path(__file__).parent / "saves"
 
@@ -20,7 +20,7 @@ class Settings:
     DQN_LANDER_CHECKPOINT = DQN_SAVE_DIR / "lander" / "checkpoint"
     DQN_CONTROL_BEST = DQN_SAVE_DIR / "control" / "best"
     DQN_CONTROL_CHECKPOINT = DQN_SAVE_DIR / "control" / "checkpoint"
-    
+
     DDPG_SAVE_DIR = SAVES_DIR / "ddpg"
     DDPG_LANDER_BEST = DDPG_SAVE_DIR / "lander" / "best"
     DDPG_LANDER_CHECKPOINT = DDPG_SAVE_DIR / "lander" / "checkpoint"
@@ -28,7 +28,7 @@ class Settings:
     DDPG_CONTROL_CHECKPOINT = DDPG_SAVE_DIR / "control" / "checkpoint"
 
     SIMULATION_FPS = 30
-    SIMULATION_FRAME_SIZE = (800, 800)
+    SIMULATION_FRAME_SIZE = (400, 400)
     RENDERING_VIEWPORT_SIZE = (256, 256)
     RENDERING_SPACECRAFT_DEBUGGING = True
     RENDER_SPACECRAFT_INFORMATION = True
@@ -40,23 +40,5 @@ class Agent(ABC):
     def get_action(self, environment: Environment):
         """
         Returns the next action to perform, given the current environment
-        """
-        pass
-
-    def render(self, surface: pygame.Surface):
-        """
-        Render something to the window. Like state variables or personal thoughts.
-        """
-        pass
-
-    def handle_event(self, event: pygame.event.Event):
-        """
-        Can be used to handle events like clicking or mouse presses. 
-        """
-        pass
-
-    def reset(self):
-        """
-        If agent returns actions sequentially from a list, this could be used to reset the index that points to the current action to return.
         """
         pass
