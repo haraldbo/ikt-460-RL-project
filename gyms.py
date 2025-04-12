@@ -12,7 +12,7 @@ class Normalization:
 
     MEAN = np.array([
         0,  # delta x
-        50,  # delta y
+        0,  # delta y
         0,  # velocity x
         -5,  # velocity y
         1,  # cos (angle)
@@ -23,8 +23,8 @@ class Normalization:
     ])
 
     SD = np.array([
-        50,  # delta x
-        50,  # delta y
+        100,  # delta x
+        100,  # delta y
         10,  # velocity x
         10,  # velocity y
         1,  # cos(angle)
@@ -172,24 +172,43 @@ class LandingSpacecraftGym(SpacecraftGym):
         obs = (obs - Normalization.MEAN) / Normalization.SD
 
         if self.env.state == self.env.STATE_ENDED:
-            distance_penalty = self.env.get_distance_to(*self.landing_area)
-            velocity_penalty = self.env.get_velocity() * 5
+            distance_penalty = self.env.get_distance_to(*self.landing_area) * 2
+            velocity_penalty = self.env.get_velocity() * 10
             angle_penalty = np.fabs(self.env.angle) * 15
             angular_velocity_penalty = np.fabs(self.env.angular_velocity) * 15
             reward = 1000 - (distance_penalty + angle_penalty +
-                            velocity_penalty + angular_velocity_penalty)
+                             velocity_penalty + angular_velocity_penalty)
             flight_ended = True
-        elif np.fabs(self.env.angular_velocity) > 0.5:
+        elif np.fabs(self.env.angular_velocity) > 0.5 or self.env.get_velocity() > 15:
+            flight_ended = True
+            reward = -1000
+        elif (self.env.position[1] - self.landing_area[1]) < 20 and (np.fabs(self.env.angular_velocity) > 0.1 or np.fabs(self.env.angle) > 0.05 or self.env.get_velocity() > 3):
             flight_ended = True
             reward = -1000
         else:
-            reward = -1
-            flight_ended = False
-            # Maybe add a positive but descending reward for staying in the air - that turns negative after a while
+            # vector pointing towards jump above the landing site
+            landing_area_vec = (np.array(
+                [self.landing_area[0], self.landing_area[1]]) - np.array(self.env.position))
+
+            # normalize landing site vector
+            landing_area_vec = landing_area_vec / \
+                (np.linalg.norm(landing_area_vec) + + 0.0001)
+
+            # normalized velocity vector
+            velocity_vector = self.env.velocity / \
+                (np.linalg.norm(self.env.velocity) + 0.0001)
+
+            # guide vehicle towards landing area (Gaze heuristic)
+            reward = -np.linalg.norm(landing_area_vec-velocity_vector) * \
+                self.env.get_distance_to(*self.landing_area) * 1e-2
+
             # reward -= self.env.get_distance_to(*self.landing_area) * 1e-2
+
+            flight_ended = False
+
+            # Maybe add a positive but descending reward for staying in the air - that turns negative after a while
             # reward -= (self.env.get_velocity()**2) * 1e-2
             # reward -= np.fabs(self.env.angle)
-            
 
         info = {}
 
@@ -204,13 +223,13 @@ class LandingSpacecraftGym(SpacecraftGym):
         self.env.reset()
 
         # Position spacecraft at some random location above the landing area:
-        self.env.position = (self.landing_area[0] + np.random.randint(-50, 50),
-                             self.landing_area[1] + np.random.randint(50, 100))
+        self.env.position = (self.landing_area[0] + np.random.randint(-100, 100),
+                             self.landing_area[1] + np.random.randint(100, 200))
 
         # With a bit of velocity, angle and angular velocity
         self.env.velocity = (np.random.uniform(-5, 5),
                              np.random.uniform(-5, 5))
-        self.env.angle = np.random.uniform(-np.pi/8, np.pi/8)
+        self.env.angle = np.random.uniform(-np.pi/16, np.pi/16)
         self.env.angular_velocity = np.random.uniform(-0.1, 0.1)
 
         # And with a random rocket engine configuration

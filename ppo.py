@@ -114,7 +114,6 @@ def train_hovering_agent(init_env: Environment):
     checkpoint_callback = CheckpointCallback(
         save_freq=5000,
         save_path=Settings.PPO_HOVERING_CHECKPOINT,
-
         name_prefix="ppo_hovering",
         save_replay_buffer=True,
         save_vecnormalize=True,
@@ -141,5 +140,5 @@ def train_hovering_agent(init_env: Environment):
 
 if __name__ == "__main__":
     init_env = Environment(time_step_size=Settings.TIME_STEP_SIZE)
-    # train_landing_agent(init_env)
-    train_hovering_agent(init_env)
+    train_landing_agent(init_env)
+    # train_hovering_agent(init_env)

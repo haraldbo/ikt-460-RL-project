@@ -8,6 +8,9 @@ import torch.optim as optim
 from torch.distributions.normal import Normal
 import os
 import gymnasium as gym
+from gyms import LandingSpacecraftGym
+from common import Settings
+from spacecraft import Environment
 
 
 class ReplayBuffer:
@@ -206,7 +209,7 @@ class Agent:
         self.update_network_parameters(tau=1)
 
     def choose_action(self, observation):
-        state = torch.Tensor([observation]).to(self.actor.device)
+        state = torch.Tensor(np.array([observation])).to(self.actor.device)
         actions, _ = self.actor.sample_normal(state, reparameterize=False)
         return actions.cpu().detach().numpy()[0]
 
@@ -311,28 +314,32 @@ class Agent:
 
 
 if __name__ == "__main__":
-    env = gym.make("Pendulum-v1")
+    # env = gym.make("Pendulum-v1")
+    init_env = Environment(time_step_size=Settings.TIME_STEP_SIZE)
+    env = LandingSpacecraftGym(env=init_env, discrete_actions=False)
     agent = Agent(
         input_dims=env.observation_space.shape,
         env=env,
         n_actions=env.action_space.shape[0]
     )
 
-    n_games = 250
+    n_games = 1_000
     filename = "pendulum"
 
     best_score = -float('inf')
     score_history = []
     load_checkpoint = False
-    max_action = 2
 
     for i in range(n_games):
         observation, _ = env.reset()
         done = False
         score = 0
+        length = 0
         while not done:
             action = agent.choose_action(observation)
-            observation_, reward, done, truncated, info = env.step(action * max_action)
+            observation_, reward, done, truncated, info = env.step(
+                action * env.action_space.high)
+            length += 1
             score += reward
             agent.remember(observation, action, reward, observation_, done)
             if not load_checkpoint:
@@ -340,6 +347,7 @@ if __name__ == "__main__":
             observation = observation_
             if truncated:
                 break
+
         score_history.append(score)
         avg_score = np.mean(score_history[-100:])
 
@@ -349,8 +357,8 @@ if __name__ == "__main__":
             if not load_checkpoint:
                 agent.save_models()
 
-        print('episode ', i, 'score %.1f' %
-              score, 'avg_score %.1f' % avg_score)
+        print(
+            f"episode {i}: length: {length}, score: {round(score, 3)}, avg_score: {round(avg_score, 3)}")
 
     if not load_checkpoint:
         x = [i+1 for i in range(n_games)]
