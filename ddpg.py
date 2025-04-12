@@ -1,76 +1,162 @@
-from gyms import LandingSpacecraftGym, Normalization
-from spacecraft import Environment
-from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
-from stable_baselines3 import DDPG
+import gymnasium as gym
+import random
+import collections
 import numpy as np
-from common import Settings, Agent
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from gyms import LandingSpacecraftGym
+
+# Hyperparameters
+lr_mu = 0.0005
+lr_q = 0.001
+gamma = 0.99
+batch_size = 32
+buffer_limit = 50000
+tau = 0.005  # for target network soft update
 
 
-class DDPGLandingAgent(Agent):
+class ReplayBuffer():
+    def __init__(self):
+        self.buffer = collections.deque(maxlen=buffer_limit)
 
-    def __init__(self, landing_area):
-        super().__init__()
-        self.landing_area = landing_area
-        self.model = DDPG.load(Settings.DDPG_LANDER_BEST /
-                               "best_model", device="cpu")
+    def put(self, transition):
+        self.buffer.append(transition)
 
-    def get_action(self, env: Environment):
-        state = np.array([
-            (env.position[0] - self.landing_area[0]),  # delta x
-            (env.position[1] - self.landing_area[1]),  # delta y
-            env.velocity[0],  # x velocity
-            env.velocity[1],  # y velocity
-            np.cos(env.angle),  # cos angle
-            np.sin(env.angle),  # sin angle
-            env.angular_velocity,  # angular velocity
-            env.thrust_level,  # thrust level
-            env.gimbal_level  # gimbal level
-        ])
+    def sample(self, n):
+        mini_batch = random.sample(self.buffer, n)
+        s_lst, a_lst, r_lst, s_prime_lst, done_mask_lst = [], [], [], [], []
 
-        state = (state - Normalization.MEAN)/Normalization.SD
-        action, _ = self.model.predict(state, deterministic=True)
-        return action
+        for transition in mini_batch:
+            s, a, r, s_prime, done = transition
+            s_lst.append(s)
+            a_lst.append(a)
+            r_lst.append([r])
+            s_prime_lst.append(s_prime)
+            done_mask = 0.0 if done else 1.0
+            done_mask_lst.append([done_mask])
 
-    def handle_event(self, event):
-        pass
+        return torch.tensor(s_lst, dtype=torch.float), torch.tensor(a_lst, dtype=torch.float), \
+            torch.tensor(r_lst, dtype=torch.float), torch.tensor(s_prime_lst, dtype=torch.float), \
+            torch.tensor(done_mask_lst, dtype=torch.float)
 
-    def reset(self):
-        pass
-
-    def render(self, window):
-        pass
+    def size(self):
+        return len(self.buffer)
 
 
-def train_landing_agent(init_env: Environment):
-    env = LandingSpacecraftGym(env=init_env, discrete_actions=False)
+class MuNet(nn.Module):
+    def __init__(self):
+        super(MuNet, self).__init__()
+        self.fc1 = nn.Linear(9, 128)
+        self.fc2 = nn.Linear(128, 64)
+        self.fc_mu = nn.Linear(64, 2)
 
-    checkpoint_callback = CheckpointCallback(
-        save_freq=5000,
-        save_path=Settings.DDPG_LANDER_CHECKPOINT,
-        name_prefix="ddpg_landing",
-        save_replay_buffer=True,
-        save_vecnormalize=True,
-    )
-
-    eval_callback = EvalCallback(
-        env,
-        best_model_save_path=Settings.DDPG_LANDER_BEST,
-        eval_freq=5000,
-        n_eval_episodes=100,
-        deterministic=True
-    )
-
-    model = DDPG(
-        "MlpPolicy", env,
-        verbose=0,
-        device="cpu",
-        tensorboard_log="./tensorboard_logs",
-        gamma=1
-    )
-    model.learn(total_timesteps=10_000_000, callback=[
-                checkpoint_callback, eval_callback])
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        # Multipled by 2 because the action space of the Pendulum-v0 is [-2,2]
+        mu = torch.tanh(self.fc_mu(x))
+        return mu
 
 
-if __name__ == "__main__":
-    init_env = Environment(time_step_size=Settings.TIME_STEP_SIZE)
-    train_landing_agent(init_env)
+class QNet(nn.Module):
+    def __init__(self):
+        super(QNet, self).__init__()
+        self.fc_s = nn.Linear(9, 64)
+        self.fc_a = nn.Linear(2, 64)
+        self.fc_q = nn.Linear(128, 32)
+        self.fc_out = nn.Linear(32, 1)
+
+    def forward(self, x, a):
+        h1 = F.relu(self.fc_s(x))
+        h2 = F.relu(self.fc_a(a))
+        cat = torch.cat([h1, h2], dim=1)
+        q = F.relu(self.fc_q(cat))
+        q = self.fc_out(q)
+        return q
+
+
+class OrnsteinUhlenbeckNoise:
+    def __init__(self, mu):
+        self.theta, self.dt, self.sigma = 0.1, 0.01, 0.1
+        self.mu = mu
+        self.x_prev = np.zeros_like(self.mu)
+
+    def __call__(self):
+        x = self.x_prev + self.theta * (self.mu - self.x_prev) * self.dt + \
+            self.sigma * np.sqrt(self.dt) * \
+            np.random.normal(size=self.mu.shape)
+        self.x_prev = x
+        return x
+
+
+def train(mu, mu_target, q, q_target, memory, q_optimizer, mu_optimizer):
+    s, a, r, s_prime, done_mask = memory.sample(batch_size)
+
+    target = r + gamma * q_target(s_prime, mu_target(s_prime)) * done_mask
+    q_loss = F.smooth_l1_loss(q(s, a), target.detach())
+    q_optimizer.zero_grad()
+    q_loss.backward()
+    q_optimizer.step()
+
+    mu_loss = -q(s, mu(s)).mean()  # That's all for the policy loss.
+    mu_optimizer.zero_grad()
+    mu_loss.backward()
+    mu_optimizer.step()
+
+
+def soft_update(net, net_target):
+    for param_target, param in zip(net_target.parameters(), net.parameters()):
+        param_target.data.copy_(
+            param_target.data * (1.0 - tau) + param.data * tau)
+
+
+def main():
+    # env = gym.make('Pendulum-v1', max_episode_steps=200, autoreset=True)
+    env = LandingSpacecraftGym(discrete_actions=False)
+    memory = ReplayBuffer()
+
+    q, q_target = QNet(), QNet()
+    q_target.load_state_dict(q.state_dict())
+    mu, mu_target = MuNet(), MuNet()
+    mu_target.load_state_dict(mu.state_dict())
+
+    score = 0.0
+    print_interval = 20
+
+    mu_optimizer = optim.Adam(mu.parameters(), lr=lr_mu)
+    q_optimizer = optim.Adam(q.parameters(), lr=lr_q)
+    ou_noise = OrnsteinUhlenbeckNoise(mu=np.zeros(2))
+
+    for n_epi in range(10000):
+        s, _ = env.reset()
+        done = False
+
+        count = 0
+        while count < 200 and not done:
+            a = mu(torch.from_numpy(s).float())
+            a = np.clip(a.detach().numpy() + ou_noise(), -1, 1)
+            s_prime, r, done, truncated, info = env.step(a)
+            memory.put((s, a, r/100.0, s_prime, done))
+            score += r
+            s = s_prime
+            count += 1
+
+        if memory.size() > 2000:
+            for i in range(10):
+                train(mu, mu_target, q, q_target,
+                      memory, q_optimizer, mu_optimizer)
+                soft_update(mu, mu_target)
+                soft_update(q,  q_target)
+
+        if n_epi % print_interval == 0 and n_epi != 0:
+            print("# of episode :{}, avg score : {:.1f}".format(
+                n_epi, score/print_interval))
+            score = 0.0
+
+    env.close()
+
+
+if __name__ == '__main__':
+    main()

@@ -315,8 +315,7 @@ class Agent:
 
 if __name__ == "__main__":
     # env = gym.make("Pendulum-v1")
-    init_env = Environment(time_step_size=Settings.TIME_STEP_SIZE)
-    env = LandingSpacecraftGym(env=init_env, discrete_actions=False)
+    env = LandingSpacecraftGym(discrete_actions=False)
     agent = Agent(
         input_dims=env.observation_space.shape,
         env=env,

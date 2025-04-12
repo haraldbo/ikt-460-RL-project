@@ -3,10 +3,11 @@ from copy import copy
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-
+from common import Settings
 
 # It is recommended to normalize the environment
 # https://stable-baselines.readthedocs.io/en/master/guide/rl_tips.html#tips-and-tricks-when-creating-a-custom-environment
+
 
 class Normalization:
 
@@ -140,7 +141,8 @@ class LandingSpacecraftGym(SpacecraftGym):
         "render_fps": 1,
     }
 
-    def __init__(self, env, discrete_actions=True):
+    def __init__(self, discrete_actions=True):
+        env = Environment(time_step_size=Settings.TIME_STEP_SIZE)
         self.landing_area = (env.map.width//2, 10)
         super().__init__(env, discrete_actions=discrete_actions)
 
@@ -179,7 +181,7 @@ class LandingSpacecraftGym(SpacecraftGym):
             reward = 1000 - (distance_penalty + angle_penalty +
                              velocity_penalty + angular_velocity_penalty)
             flight_ended = True
-        elif np.fabs(self.env.angular_velocity) > 0.5 or self.env.get_velocity() > 15:
+        elif np.fabs(self.env.angular_velocity) > 0.5 or self.env.get_velocity() > 15 or np.fabs(self.env.angle) > 0.6:
             flight_ended = True
             reward = -1000
         elif (self.env.position[1] - self.landing_area[1]) < 20 and (np.fabs(self.env.angular_velocity) > 0.1 or np.fabs(self.env.angle) > 0.05 or self.env.get_velocity() > 3):
@@ -199,8 +201,9 @@ class LandingSpacecraftGym(SpacecraftGym):
                 (np.linalg.norm(self.env.velocity) + 0.0001)
 
             # guide vehicle towards landing area (Gaze heuristic)
-            reward = -np.linalg.norm(landing_area_vec-velocity_vector) * \
-                self.env.get_distance_to(*self.landing_area) * 1e-2
+            reward = -1
+            reward -= np.linalg.norm(landing_area_vec-velocity_vector) * \
+                self.env.get_distance_to(*self.landing_area) * 1e-1
 
             # reward -= self.env.get_distance_to(*self.landing_area) * 1e-2
 
@@ -214,7 +217,7 @@ class LandingSpacecraftGym(SpacecraftGym):
 
         terminated = flight_ended
 
-        # truncated = self.env.steps >= 200
+        # truncated = self.env.steps >= 2000
 
         truncated = False
         return obs, reward, terminated, truncated, info

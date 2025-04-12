@@ -1,144 +1,125 @@
-from gyms import LandingSpacecraftGym, SpacecraftGym, HoveringSpacecraftGym, Normalization
-from spacecraft import Environment
-from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
-from stable_baselines3 import PPO, DDPG
-import numpy as np
-from common import Settings, Agent
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torch.distributions import Categorical
+from gyms import LandingSpacecraftGym
+
+# Hyperparameters
+learning_rate = 0.0005
+gamma = 0.98
+lmbda = 0.95
+eps_clip = 0.1
+K_epoch = 3
+T_horizon = 20
 
 
-class PPOLandingAgent(Agent):
+class PPO(nn.Module):
+    def __init__(self):
+        super(PPO, self).__init__()
+        self.data = []
 
-    def __init__(self, landing_area):
-        self.landing_area = landing_area
-        self.action_space = LandingSpacecraftGym(
-            env=Environment()).discrete_action_space
-        self.model = PPO.load(Settings.PPO_LANDER_BEST /
-                              "best_model", device="cpu")
+        self.fc1 = nn.Linear(9, 256)
+        self.fc_pi = nn.Linear(256, 9)
+        self.fc_v = nn.Linear(256, 1)
+        self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
 
-    def get_action(self, env: Environment):
-        state = np.array([
-            (env.position[0] - self.landing_area[0]),  # delta x
-            (env.position[1] - self.landing_area[1]),  # delta y
-            env.velocity[0],  # x velocity
-            env.velocity[1],  # y velocity
-            np.cos(env.angle),  # cos angle
-            np.sin(env.angle),  # sin angle
-            env.angular_velocity,  # angular velocity
-            env.thrust_level,  # thrust level
-            env.gimbal_level  # gimbal level
-        ])
+    def pi(self, x, softmax_dim=0):
+        x = F.relu(self.fc1(x))
+        x = self.fc_pi(x)
+        prob = F.softmax(x, dim=softmax_dim)
+        return prob
 
-        state = (state - Normalization.MEAN)/Normalization.SD
-        action_idx, _ = self.model.predict(state, deterministic=True)
-        return self.action_space[action_idx]
+    def v(self, x):
+        x = F.relu(self.fc1(x))
+        v = self.fc_v(x)
+        return v
 
-    def handle_event(self, event):
-        pass
+    def put_data(self, transition):
+        self.data.append(transition)
 
-    def reset(self):
-        pass
+    def make_batch(self):
+        s_lst, a_lst, r_lst, s_prime_lst, prob_a_lst, done_lst = [], [], [], [], [], []
+        for transition in self.data:
+            s, a, r, s_prime, prob_a, done = transition
 
-    def render(self, window):
-        pass
+            s_lst.append(s)
+            a_lst.append([a])
+            r_lst.append([r])
+            s_prime_lst.append(s_prime)
+            prob_a_lst.append([prob_a])
+            done_mask = 0 if done else 1
+            done_lst.append([done_mask])
 
+        s, a, r, s_prime, done_mask, prob_a = torch.tensor(s_lst, dtype=torch.float), torch.tensor(a_lst), \
+            torch.tensor(r_lst), torch.tensor(s_prime_lst, dtype=torch.float), \
+            torch.tensor(done_lst, dtype=torch.float), torch.tensor(prob_a_lst)
+        self.data = []
+        return s, a, r, s_prime, done_mask, prob_a
 
-class PPOHoveringAgent(Agent):
+    def train_net(self):
+        s, a, r, s_prime, done_mask, prob_a = self.make_batch()
 
-    def __init__(self, hovering_point):
-        self.hovering_point = hovering_point
-        self.action_space = SpacecraftGym(
-            env=Environment()).discrete_action_space
-        self.model = PPO.load(Settings.PPO_HOVERING_BEST /
-                              "best_model", device="cpu")
+        for i in range(K_epoch):
+            td_target = r + gamma * self.v(s_prime) * done_mask
+            delta = td_target - self.v(s)
+            delta = delta.detach().numpy()
 
-    def get_action(self, env: Environment):
-        state = np.array([
-            (env.position[0] - self.hovering_point[0]),  # delta x
-            (env.position[1] - self.hovering_point[1]),  # delta y
-            env.velocity[0],  # x velocity
-            env.velocity[1],  # y velocity
-            np.cos(env.angle),  # cos angle
-            np.sin(env.angle),  # sin angle
-            env.angular_velocity,  # angular velocity
-            env.thrust_level,  # thrust level
-            env.gimbal_level  # gimbal level
-        ])
+            advantage_lst = []
+            advantage = 0.0
+            for delta_t in delta[::-1]:
+                advantage = gamma * lmbda * advantage + delta_t[0]
+                advantage_lst.append([advantage])
+            advantage_lst.reverse()
+            advantage = torch.tensor(advantage_lst, dtype=torch.float)
 
-        state = (state - Normalization.MEAN)/Normalization.SD
-        action_idx, _ = self.model.predict(state, deterministic=True)
-        return self.action_space[action_idx]
+            pi = self.pi(s, softmax_dim=1)
+            pi_a = pi.gather(1, a)
+            # a/b == exp(log(a)-log(b))
+            ratio = torch.exp(torch.log(pi_a) - torch.log(prob_a))
 
-    def handle_event(self, event):
-        pass
+            surr1 = ratio * advantage
+            surr2 = torch.clamp(ratio, 1-eps_clip, 1+eps_clip) * advantage
+            loss = -torch.min(surr1, surr2) + \
+                F.smooth_l1_loss(self.v(s), td_target.detach())
 
-    def reset(self):
-        pass
-
-    def render(self, window):
-        pass
-
-
-def train_landing_agent(init_env: Environment):
-    env = LandingSpacecraftGym(env=init_env)
-
-    checkpoint_callback = CheckpointCallback(
-        save_freq=5000,
-        save_path=Settings.PPO_LANDER_CHECKPOINT,
-        name_prefix="ppo_landing",
-        save_replay_buffer=True,
-        save_vecnormalize=True,
-    )
-
-    eval_callback = EvalCallback(
-        env,
-        best_model_save_path=Settings.PPO_LANDER_BEST,
-        eval_freq=5000,
-        n_eval_episodes=100,
-        deterministic=True
-    )
-
-    model = PPO(
-        "MlpPolicy", env,
-        verbose=0,
-        device="cpu",
-        tensorboard_log="./tensorboard_logs",
-        gamma=1
-    )
-    model.learn(total_timesteps=10_000_000, callback=[
-                checkpoint_callback, eval_callback])
+            self.optimizer.zero_grad()
+            loss.mean().backward()
+            self.optimizer.step()
 
 
-def train_hovering_agent(init_env: Environment):
-    env = HoveringSpacecraftGym(env=init_env)
+def main():
+    env = LandingSpacecraftGym()
+    model = PPO()
+    score = 0.0
+    print_interval = 20
 
-    checkpoint_callback = CheckpointCallback(
-        save_freq=5000,
-        save_path=Settings.PPO_HOVERING_CHECKPOINT,
-        name_prefix="ppo_hovering",
-        save_replay_buffer=True,
-        save_vecnormalize=True,
-    )
+    for n_epi in range(100_000):
+        s, _ = env.reset()
+        done = False
+        while not done:
+            for t in range(T_horizon):
+                prob = model.pi(torch.from_numpy(s).float())
+                m = Categorical(prob)
+                a = m.sample().item()
+                s_prime, r, done, truncated, info = env.step(a)
 
-    eval_callback = EvalCallback(
-        env,
-        best_model_save_path=Settings.PPO_HOVERING_BEST,
-        eval_freq=5000,
-        n_eval_episodes=100,
-        deterministic=True
-    )
+                model.put_data((s, a, r/100.0, s_prime, prob[a].item(), done))
+                s = s_prime
 
-    model = PPO(
-        "MlpPolicy", env,
-        verbose=0,
-        device="cpu",
-        tensorboard_log="./tensorboard_logs",
-        gamma=1
-    )
-    model.learn(total_timesteps=10_000_000, callback=[
-                checkpoint_callback, eval_callback])
+                score += r
+                if done:
+                    break
+
+            model.train_net()
+
+        if n_epi % print_interval == 0 and n_epi != 0:
+            print("# of episode :{}, avg score : {:.1f}".format(
+                n_epi, score/print_interval))
+            score = 0.0
+
+    env.close()
 
 
-if __name__ == "__main__":
-    init_env = Environment(time_step_size=Settings.TIME_STEP_SIZE)
-    train_landing_agent(init_env)
-    # train_hovering_agent(init_env)
+if __name__ == '__main__':
+    main()

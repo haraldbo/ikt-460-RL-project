@@ -4,8 +4,9 @@ import pygame
 from common import Settings
 from copy import copy
 from common import Agent
-from ppo import PPOLandingAgent, PPOHoveringAgent
-from ddpg import DDPGLandingAgent
+from ppo_sb3 import PPOLandingAgent, PPOHoveringAgent
+from ddpg_sb3 import DDPGLandingAgent
+from td3_sb3 import TD3LandingAgent
 from stable_baselines3 import PPO, DQN
 
 
@@ -46,8 +47,9 @@ def test_agent(agent: Agent, init_env: Environment):
 
 if __name__ == "__main__":
     init_env = Environment(time_step_size=Settings.TIME_STEP_SIZE)
-    init_env.position = (init_env.map.width//2+100, 200)
+    init_env.position = (init_env.map.width//2+0, 200)
     landing_agent = PPOLandingAgent(landing_area=(init_env.map.width//2, 10))
+    landing_agent = TD3LandingAgent(landing_area=(init_env.map.width//2, 10))
     # landing_agent = DDPGLandingAgent()
     # hovering_agent = PPOHoveringAgent(hovering_point=hover_point)
     
