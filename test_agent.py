@@ -46,11 +46,14 @@ def test_agent(agent: Agent, init_env: Environment):
 
 if __name__ == "__main__":
     init_env = Environment(time_step_size=Settings.TIME_STEP_SIZE)
-    # landing_agent = PPOLandingAgent()
-    # landing_agent = DDPGLandingAgent()
     hover_point = (init_env.map.width//2, init_env.map.height//2)
+    
+    landing_agent = PPOLandingAgent(landing_area=(init_env.map.width//2, 10))
+    # landing_agent = DDPGLandingAgent()
     hovering_agent = PPOHoveringAgent(hovering_point=hover_point)
+    
     init_env.position = (hover_point[0], hover_point[1])
     print(hover_point)
     init_env.angular_velocity = 0.0
-    test_agent(hovering_agent, init_env)
+    #test_agent(hovering_agent, init_env)
+    test_agent(landing_agent, init_env)

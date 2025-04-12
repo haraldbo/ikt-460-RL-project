@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 class Settings:
-    TIME_STEP_SIZE = 1/2
+    TIME_STEP_SIZE = 1/5
 
     SAVES_DIR = Path(__file__).parent / "saves"
 
@@ -26,6 +26,13 @@ class Settings:
     DDPG_LANDER_CHECKPOINT = DDPG_SAVE_DIR / "lander" / "checkpoint"
     DDPG_HOVERING_BEST = DDPG_SAVE_DIR / "hovering" / "best"
     DDPG_HOVERING_CHECKPOINT = DDPG_SAVE_DIR / "hovering" / "checkpoint"
+    
+    
+    TD3_SAVE_DIR = SAVES_DIR / "td3"
+    TD3_LANDER_BEST = TD3_SAVE_DIR / "lander" / "best"
+    TD3_LANDER_CHECKPOINT = TD3_SAVE_DIR / "lander" / "checkpoint"
+    TD3_HOVERING_BEST = TD3_SAVE_DIR / "hovering" / "best"
+    TD3_HOVERING_CHECKPOINT = TD3_SAVE_DIR / "hovering" / "checkpoint"
 
     SIMULATION_FPS = 30
     SIMULATION_FRAME_SIZE = (400, 400)

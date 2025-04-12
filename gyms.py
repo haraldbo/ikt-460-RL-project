@@ -12,13 +12,13 @@ class Normalization:
 
     MEAN = np.array([
         0,  # delta x
-        0,  # delta y
+        50,  # delta y
         0,  # velocity x
-        0,  # velocity y
-        0,  # cos (angle)
+        -5,  # velocity y
+        1,  # cos (angle)
         0,  # sin(angle)
         0,  # angular velocity
-        0,  # thrust level
+        5,  # thrust level
         0,  # gimbal level
     ])
 
@@ -166,39 +166,46 @@ class LandingSpacecraftGym(SpacecraftGym):
 
         self.env.step(action)
 
-        new_obs = self._get_obs()
+        obs = self._get_obs()
 
-        new_obs = (new_obs - Normalization.MEAN) / Normalization.SD
-        old_obs = (old_obs - Normalization.MEAN) / Normalization.SD
+        # Normalize obs
+        obs = (obs - Normalization.MEAN) / Normalization.SD
 
-        flight_ended = self.env.state == self.env.STATE_ENDED
-
-        if flight_ended:
+        if self.env.state == self.env.STATE_ENDED:
             distance_penalty = self.env.get_distance_to(*self.landing_area)
             velocity_penalty = self.env.get_velocity() * 5
             angle_penalty = np.fabs(self.env.angle) * 15
             angular_velocity_penalty = np.fabs(self.env.angular_velocity) * 15
-            reward = 100 - (distance_penalty + angle_penalty +
+            reward = 1000 - (distance_penalty + angle_penalty +
                             velocity_penalty + angular_velocity_penalty)
+            flight_ended = True
+        elif np.fabs(self.env.angular_velocity) > 0.5:
+            flight_ended = True
+            reward = -1000
         else:
-            reward = -0.01
+            reward = -1
+            flight_ended = False
             # Maybe add a positive but descending reward for staying in the air - that turns negative after a while
-            reward -= self.env.get_distance_to(*self.landing_area) * 1e-2
-            reward -= (self.env.get_velocity()**2) * 1e-2
-            reward -= np.fabs(self.env.angle)
+            # reward -= self.env.get_distance_to(*self.landing_area) * 1e-2
+            # reward -= (self.env.get_velocity()**2) * 1e-2
+            # reward -= np.fabs(self.env.angle)
+            
 
         info = {}
 
         terminated = flight_ended
-        truncated = self.env.steps >= 200
-        return new_obs, reward, terminated, truncated, info
+
+        # truncated = self.env.steps >= 200
+
+        truncated = False
+        return obs, reward, terminated, truncated, info
 
     def reset(self, seed=None, options=None):
         self.env.reset()
 
         # Position spacecraft at some random location above the landing area:
-        self.env.position = (self.landing_area[0] + np.random.randint(-20, 20),
-                             self.landing_area[1] + np.random.randint(40, 80))
+        self.env.position = (self.landing_area[0] + np.random.randint(-50, 50),
+                             self.landing_area[1] + np.random.randint(50, 100))
 
         # With a bit of velocity, angle and angular velocity
         self.env.velocity = (np.random.uniform(-5, 5),
