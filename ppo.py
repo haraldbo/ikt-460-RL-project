@@ -5,40 +5,12 @@ import torch.optim as optim
 from torch.distributions import Categorical
 from gyms import LandingSpacecraftGym, LandingEvaluator
 
-# Hyperparameters
-learning_rate = 0.0005
-gamma = 0.98
-lmbda = 0.95
-eps_clip = 0.1
-K_epoch = 3
-T_horizon = 100
 
-
-class PPO(nn.Module):
+class TransitionBuffer:
     def __init__(self):
-        super(PPO, self).__init__()
         self.data = []
 
-        self.fc1 = nn.Linear(9, 256)
-        self.fc_pi = nn.Linear(256, 9)
-        self.fc_v = nn.Linear(256, 1)
-        self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
-
-    def pi(self, x, softmax_dim=0):
-        x = F.relu(self.fc1(x))
-        x = self.fc_pi(x)
-        prob = F.softmax(x, dim=softmax_dim)
-        return prob
-
-    def v(self, x):
-        x = F.relu(self.fc1(x))
-        v = self.fc_v(x)
-        return v
-
-    def put_data(self, transition):
-        self.data.append(transition)
-
-    def make_batch(self):
+    def create_batch(self):
         s_lst, a_lst, r_lst, s_prime_lst, prob_a_lst, done_lst = [], [], [], [], [], []
         for transition in self.data:
             s, a, r, s_prime, prob_a, done = transition
@@ -57,8 +29,43 @@ class PPO(nn.Module):
         self.data = []
         return s, a, r, s_prime, done_mask, prob_a
 
-    def train_net(self):
-        s, a, r, s_prime, done_mask, prob_a = self.make_batch()
+    def add_transition(self, transition):
+        self.data.append(transition)
+
+    def clear(self):
+        self.data.clear()
+
+
+class PPO(nn.Module):
+    def __init__(self):
+        super(PPO, self).__init__()
+        self.data = []
+
+        self.fc1 = nn.Linear(9, 256)
+        self.fc_pi = nn.Linear(256, 9)
+        self.fc_v = nn.Linear(256, 1)
+
+    def pi(self, x, softmax_dim=0):
+        x = F.relu(self.fc1(x))
+        x = self.fc_pi(x)
+        prob = F.softmax(x, dim=softmax_dim)
+        return prob
+
+    def v(self, x):
+        x = F.relu(self.fc1(x))
+        v = self.fc_v(x)
+        return v
+
+    def train_network(self,
+                      transition_buffer: TransitionBuffer,
+                      optimizer: torch.optim.Optimizer,
+                      gamma,  # discount rate
+                      lmbda,
+                      eps_clip,  # clipping rate
+                      K_epoch  # how many epochs to run for each batch
+                      ):
+        # Train on batch of transitions from the transition buffer
+        s, a, r, s_prime, done_mask, prob_a = transition_buffer.create_batch()
 
         for i in range(K_epoch):
             td_target = r + gamma * self.v(s_prime) * done_mask
@@ -83,18 +90,29 @@ class PPO(nn.Module):
             loss = -torch.min(surr1, surr2) + \
                 F.smooth_l1_loss(self.v(s), td_target.detach())
 
-            self.optimizer.zero_grad()
+            optimizer.zero_grad()
             loss.mean().backward()
-            self.optimizer.step()
+            optimizer.step()
 
 
-def main():
+def train_agent(learning_rate=0.0005,
+                gamma=0.98,
+                lmbda=0.95,
+                eps_clip=0.1,
+                K_epoch=3,
+                T_horizon=200,
+                eval_freq=100,
+                n_episodes=10_000
+                ):
+
     env = LandingSpacecraftGym()
     evaluator = LandingEvaluator()
+    transition_buffer = TransitionBuffer()
     model = PPO()
-    score = 0.0
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    best_reward = -float("inf")
 
-    for n_epi in range(100_000):
+    for episode in range(n_episodes):
         s, _ = env.reset()
         episode_done = False
         while not episode_done:
@@ -104,30 +122,44 @@ def main():
                 a = m.sample().item()
                 s_prime, r, terminated, truncated, info = env.step(a)
 
-                model.put_data((s, a, r/100.0, s_prime, prob[a].item(), terminated))
+                transition_buffer.add_transition(
+                    (s, a, r/100.0, s_prime, prob[a].item(), terminated))
+
                 s = s_prime
 
-                score += r
                 if terminated or truncated:
                     episode_done = True
                     break
-                    
 
-            model.train_net()
+            model.train_network(
+                transition_buffer=transition_buffer,
+                optimizer=optimizer,
+                gamma=gamma,
+                lmbda=lmbda,
+                eps_clip=eps_clip,
+                K_epoch=K_epoch,
+            )
+            transition_buffer.clear()
 
-        if n_epi % 100 == 0:
-            results = evaluator.evaluate(lambda state: model.pi(
+        if episode % eval_freq == 0 and episode != 0:
+            evaluator.evaluate(lambda state: model.pi(
                 torch.from_numpy(state).float()).argmax())
 
-            eval_reward = 0
-            for k, v in results.items():
-                eval_reward += v["total_reward"]
+            avg_reward = evaluator.get_avg_reward()
+            print("Episode", episode)
+            print("Average reward:", evaluator.get_avg_reward(),
+                  "!" * (avg_reward > best_reward))
+            print("Average length:", evaluator.get_avg_episode_length())
 
-            evaluator.save_flight_trajectory_plot("test.png")
-
-            print("Episode", n_epi, ":", eval_reward / len(results))
+            if avg_reward > best_reward:
+                evaluator.save_flight_trajectory_plot("best_trajectory.png")
+                best_reward = avg_reward
 
     env.close()
+
+
+def main():
+    train_agent()
 
 
 if __name__ == '__main__':

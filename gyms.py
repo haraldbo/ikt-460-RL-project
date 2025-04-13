@@ -172,66 +172,74 @@ class LandingSpacecraftGym(SpacecraftGym):
 
         self.env.step(action)
 
-        obs = self._get_obs()
+        # approximate. If ship lands with an angle, side may hold a bit of a positive value
+        y_distance_to_landing_area = np.fabs(
+            (self.env.position[1] - self.env.height//2) - self.landing_area[1])
 
-        # Normalize obs
-        obs = (obs - Normalization.MEAN) / Normalization.SD
+        max_accepted_velocity = 3 + y_distance_to_landing_area/100 * 10
+        max_accepted_angular_velocity = 0.1 + y_distance_to_landing_area/100 * 0.5
+        max_accepted_angle = 0.1 + y_distance_to_landing_area/100 * 0.5
 
-        y_distance_to_landing_area = (
-            self.env.position[1] - self.landing_area[1])
-        early_termination = False
+        terminated = False
         has_landed = False
+
+        x_distance = np.fabs(self.env.position[0] - self.landing_area[0])
+
         if self.env.state == self.env.STATE_ENDED:
-            distance_penalty = self.env.get_distance_to(*self.landing_area) * 2
-            velocity_penalty = self.env.get_velocity() * 10
-            angle_penalty = np.fabs(self.env.angle) * 15
-            angular_velocity_penalty = np.fabs(self.env.angular_velocity) * 15
-            reward = 1000 - (distance_penalty + angle_penalty +
-                             velocity_penalty + angular_velocity_penalty)
-            has_landed = True
-        elif np.fabs(self.env.angular_velocity) > 0.5 or self.env.get_velocity() > 15 or np.fabs(self.env.angle) > 0.6:
-            early_termination = True
+
+            if y_distance_to_landing_area < 10:
+                print("Landed!!", y_distance_to_landing_area)
+                reward = 1000 - x_distance * 5
+                has_landed = True
+            else:
+                print("Crashed!")
+                reward = -1000
+                terminated = True
+        elif np.fabs(self.env.angular_velocity) > max_accepted_angular_velocity or self.env.get_velocity() > max_accepted_velocity or np.fabs(self.env.angle) > max_accepted_angle:
+            terminated = True
             reward = -1000
-        # elif (self.env.position[1] - self.landing_area[1]) < 64 and (np.fabs(self.env.angular_velocity) > 0.1 or np.fabs(self.env.angle) > 0.05 or self.env.get_velocity() > 3):
-        #     early_termination = True
-        #     reward = -1000
         else:
-            # vector pointing towards jump above the landing site
-            landing_area_vec = (np.array(
-                [self.landing_area[0], self.landing_area[1] + 32]) - np.array(self.env.position))
+            # use gaze heuristic to guide the vehicle towards the landing area:
 
-            # normalize landing site vector
+            # vector pointing from bottom of spacecraft towards landing area
+            landing_area_vec = np.array(self.landing_area) - np.array(
+                [self.env.position[0], self.env.position[1] - self.env.height//2])
+
+            # normalize landing area vector
             landing_area_vec = landing_area_vec / \
-                (np.linalg.norm(landing_area_vec) + + 0.0001)
+                np.linalg.norm(landing_area_vec)
 
-            # normalized velocity vector
-            velocity_vector = self.env.velocity / \
-                (np.linalg.norm(self.env.velocity) + 0.0001)
+            # velocity vector normalized
+            velocity_vector = np.array(self.env.velocity) / \
+                np.linalg.norm(self.env.velocity)
 
-            # guide vehicle towards landing area (Gaze heuristic)
-            reward = -1
-            reward -= np.linalg.norm(landing_area_vec-velocity_vector) * \
+            # length of difference vector should do
+            direction_error = np.linalg.norm(velocity_vector - landing_area_vec)
+
+            # scale direction error with distance to landing area
+            reward = -direction_error * \
                 self.env.get_distance_to(*self.landing_area) * 1e-1
 
-            # reward -= self.env.get_distance_to(*self.landing_area) * 1e-2
+            reward -= 0.1
 
-            # Maybe add a positive but descending reward for staying in the air - that turns negative after a while
-            # reward -= (self.env.get_velocity()**2) * 1e-2
-            # reward -= np.fabs(self.env.angle)
+            # Add a small negative penalty for each timestep
+            # reward -= 0.5
 
         info = {
-            "early_termination": early_termination,
-            "landed": has_landed
+            "failed": terminated,
+            "success": has_landed
         }
 
-        terminated = has_landed or early_termination
+        flight_ended = has_landed or terminated
 
         truncated = False
         if self.env.steps >= 2000:
             print("Warning: n steps >= 2000")
             truncated = True
 
-        return obs, reward, terminated, truncated, info
+        obs = self._get_obs()
+        obs = (obs - Normalization.MEAN) / Normalization.SD
+        return obs, reward, flight_ended, truncated, info
 
     def reset(self, seed=None, options=None):
         self.env.reset()
@@ -281,6 +289,12 @@ class LandingEvaluator:
 
         return reward_sum / len(self.results)
 
+    def get_avg_episode_length(self):
+        length_sum = 0
+        for k, v in self.results.items():
+            length_sum += len(v["flight_path"]) - 1
+        return length_sum / len(self.results)
+
     def save_flight_trajectory_plot(self, path):
         plt.clf()
         plt.xlim((100, 500))
@@ -292,9 +306,9 @@ class LandingEvaluator:
                 x_s.append(x)
                 y_s.append(y)
             plt.plot(x_s, y_s)
-            if v["early_termination"]:
+            if v["failed"]:
                 plt.scatter(x_s[-1], y_s[-1], marker="x")
-            elif v["landed"]:
+            elif v["success"]:
                 plt.scatter(x_s[-1], y_s[-1], marker="*")
 
         plt.scatter(
@@ -321,8 +335,8 @@ class LandingEvaluator:
                         action)
                     results[key]["flight_path"].append(self.gym.env.position)
                     results[key]["total_reward"] += reward
-                    results[key]["early_termination"] = info["early_termination"]
-                    results[key]["landed"] = info["landed"]
+                    results[key]["failed"] = info["failed"]
+                    results[key]["success"] = info["success"]
                     done = terminated or truncated
         self.results = results
         return results
