@@ -8,9 +8,10 @@ import torch.optim as optim
 from torch.distributions.normal import Normal
 import os
 import gymnasium as gym
-from gyms import LandingSpacecraftGym
+from gyms import LandingSpacecraftGym, LandingEvaluator
 from common import Settings
 from spacecraft import Environment
+from pathlib import Path
 
 
 class ReplayBuffer:
@@ -188,7 +189,7 @@ class ActorNetwork(nn.Module):
 
 class Agent:
     def __init__(self, alpha=0.0003, beta=0.0003, input_dims=[8],
-                 env=None, gamma=0.99, n_actions=2, max_size=1000000, tau=0.005,
+                 env=None, gamma=0.99, n_actions=2, max_size=10_000, tau=0.005,
                  layer1_size=256, layer2_size=256, batch_size=256, reward_scale=2):
         self.gamma = gamma
         self.tau = tau
@@ -232,7 +233,7 @@ class Agent:
 
         self.target_value.load_state_dict(value_state_dict)
 
-    def save_models(self):
+    def save_models(self, path):
         print('.... saving models ....')
         self.actor.save_checkpoint()
         self.value.save_checkpoint()
@@ -314,8 +315,11 @@ class Agent:
 
 
 if __name__ == "__main__":
-    # env = gym.make("Pendulum-v1")
+
     env = LandingSpacecraftGym(discrete_actions=False)
+    evaluator = LandingEvaluator(discrete_actions=False)
+    training_dir = Path.cwd() / "sac"
+    os.makedirs(training_dir, exist_ok=True)
     agent = Agent(
         input_dims=env.observation_space.shape,
         env=env,
@@ -327,7 +331,7 @@ if __name__ == "__main__":
 
     best_score = -float('inf')
     score_history = []
-    load_checkpoint = False
+    best_score = -float('inf')
 
     for i in range(n_games):
         observation, _ = env.reset()
@@ -341,24 +345,31 @@ if __name__ == "__main__":
             length += 1
             score += reward
             agent.remember(observation, action, reward, observation_, done)
-            if not load_checkpoint:
-                agent.learn()
+        
             observation = observation_
             if truncated:
                 break
-
-        score_history.append(score)
-        avg_score = np.mean(score_history[-100:])
-
-        if avg_score > best_score:
-            best_score = avg_score
-            print(best_score)
-            if not load_checkpoint:
-                agent.save_models()
-
-        print(
-            f"episode {i}: length: {length}, score: {round(score, 3)}, avg_score: {round(avg_score, 3)}")
-
-    if not load_checkpoint:
-        x = [i+1 for i in range(n_games)]
-        # plot_learning_curve(x, score_history, figure_file)
+        
+        # learn a bit
+        for j in range(10):
+            agent.learn() 
+            
+        if i % 10 == 0 and i > 0:
+            evaluator.evaluate(lambda state: agent.choose_action(
+                state) * env.action_space.high)
+    
+            print("Episode", (i+1))
+            avg_reward = evaluator.get_avg_reward()
+            print("Average reward:", avg_reward,
+                  "!" * (avg_reward > best_score))
+            print("Average length:", evaluator.get_avg_episode_length())
+            print("Landings:", evaluator.get_num_landings(),
+                  "/", len(evaluator.results))
+            evaluator.save_flight_trajectory_plot(
+                training_dir / "trajectories.png")
+            if avg_reward > best_score:
+                best_score = avg_reward
+                evaluator.save_flight_trajectory_plot(
+                    training_dir / "best_trajectories.png")
+                # agent.save_models()
+    

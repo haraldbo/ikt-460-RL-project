@@ -4,6 +4,9 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
 from gyms import LandingSpacecraftGym, LandingEvaluator
+import optuna
+import os
+from pathlib import Path
 
 
 class TransitionBuffer:
@@ -95,24 +98,26 @@ class PPO(nn.Module):
             optimizer.step()
 
 
-def train_agent(learning_rate=0.0005,
+def train_model(learning_rate=0.0005,
                 n_episodes=10_000,
                 gamma=0.99,
                 lmbda=0.95,
                 eps_clip=0.1,
                 K_epoch=3,
                 T_horizon=200,
-                eval_freq=100,
+                eval_freq=10,
                 verbose=True,
-                eval_callback_fn=None,
+                name="landing",
+                env=LandingSpacecraftGym()
                 ):
 
-    env = LandingSpacecraftGym()
     evaluator = LandingEvaluator()
     transition_buffer = TransitionBuffer()
     model = PPO()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     best_reward = -float("inf")
+    training_directory = Path.cwd() / "ppo"
+    os.makedirs(training_directory, exist_ok=True)
 
     for episode in range(n_episodes):
         s, _ = env.reset()
@@ -149,9 +154,6 @@ def train_agent(learning_rate=0.0005,
 
             avg_reward = evaluator.get_avg_reward()
 
-            if eval_callback_fn:
-                eval_callback_fn(avg_reward)
-
             if verbose:
                 print("Episode", episode)
                 print("Average reward:", evaluator.get_avg_reward(),
@@ -161,15 +163,36 @@ def train_agent(learning_rate=0.0005,
                       "/", len(evaluator.results))
 
             if avg_reward > best_reward:
-                evaluator.save_flight_trajectory_plot("best_trajectory.png")
+                evaluator.save_flight_trajectory_plot(
+                    training_directory / "best_trajectory.png")
                 best_reward = avg_reward
+                torch.save(model.state_dict(),
+                           training_directory / f"{name}.pt")
 
-    env.close()
+    return best_reward
 
 
-def main():
-    train_agent()
+def optuna_objective(trial: optuna.Trial):
+
+    return -train_model(
+        n_episodes=1000,
+        verbose=False,
+        eval_freq=20,
+        T_horizon=trial.suggest_int("T_horizon", 100, 1000, step=100),
+        K_epoch=trial.suggest_int("K_epoch", 1, 5),
+        eps_clip=trial.suggest_float("eps_clip", 0.1, 0.3, step=0.1),
+        lmbda=trial.suggest_float("lambda", 0.9, 1, step=0.1),
+        gamma=trial.suggest_float("gamma", 0.9, 0.99, step=0.01)
+    )
+
+
+def find_good_hyperparams():
+    study = optuna.create_study(study_name="landing_ppo_params")
+    study.optimize(optuna_objective, n_trials=10)
+
+    study.trials_dataframe().to_csv("landing_ppo.csv")
 
 
 if __name__ == '__main__':
-    main()
+    find_good_hyperparams()
+    # train_model()

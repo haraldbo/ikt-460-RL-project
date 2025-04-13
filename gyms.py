@@ -213,10 +213,11 @@ class LandingSpacecraftGym(SpacecraftGym):
                 np.linalg.norm(self.env.velocity)
 
             # length of difference vector should do
+            # it is in range [0, 2]
             direction_error = np.linalg.norm(
                 velocity_vector - landing_area_vec)
 
-            reward = -direction_error
+            reward = 0.2-direction_error
 
             # reward -= 0.5
 
@@ -231,8 +232,8 @@ class LandingSpacecraftGym(SpacecraftGym):
         flight_ended = has_landed or terminated
 
         truncated = False
-        if self.env.steps >= 2000:
-            print("Warning: n steps >= 2000")
+        if self.env.steps >= 1000:
+            # print("Warning: n steps >= 1000")
             truncated = True
 
         obs = self._get_obs()
@@ -265,8 +266,8 @@ class LandingSpacecraftGym(SpacecraftGym):
 
 class LandingEvaluator:
 
-    def __init__(self, n_x=4, n_y=3):
-        self.gym = LandingSpacecraftGym()
+    def __init__(self, n_x=4, n_y=3, discrete_actions=True):
+        self.gym = LandingSpacecraftGym(discrete_actions=discrete_actions)
         self.x_positions = np.linspace(
             self.gym.x_start, self.gym.x_end, num=n_x)
         self.y_positions = np.linspace(
@@ -310,14 +311,18 @@ class LandingEvaluator:
             for x, y in v["flight_path"]:
                 x_s.append(x)
                 y_s.append(y)
-            plt.plot(x_s, y_s)
-            if v["terminated"]:
-                plt.scatter(x_s[-1], y_s[-1], marker="x")
-            elif v["landed"]:
-                plt.scatter(x_s[-1], y_s[-1], marker="*")
 
-        plt.scatter(
-            self.gym.landing_area[0], self.gym.landing_area[1] + 32, label="Landing area")
+            color = "green" if v["landed"] else "red"
+            plt.plot(x_s, y_s, color=color)
+            if v["terminated"]:
+                plt.scatter(x_s[-1], y_s[-1], color=color, marker="x")
+            elif v["landed"]:
+                plt.scatter(x_s[-1], y_s[-1], color=color, marker="*")
+            
+        plt.scatter(x_s[0], y_s[0], color="black", marker="o")
+
+        plt.scatter([self.gym.landing_area[0]], [
+                    self.gym.landing_area[1] + 32], s=[500], label="Landing area", zorder=-1)
         plt.xlabel("x")
         plt.ylabel("y")
         plt.legend()
