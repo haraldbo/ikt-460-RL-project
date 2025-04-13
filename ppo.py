@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
-from gyms import LandingSpacecraftGym
+from gyms import LandingSpacecraftGym, LandingEvaluator
 
 # Hyperparameters
 learning_rate = 0.0005
@@ -11,7 +11,7 @@ gamma = 0.98
 lmbda = 0.95
 eps_clip = 0.1
 K_epoch = 3
-T_horizon = 20
+T_horizon = 100
 
 
 class PPO(nn.Module):
@@ -90,33 +90,42 @@ class PPO(nn.Module):
 
 def main():
     env = LandingSpacecraftGym()
+    evaluator = LandingEvaluator()
     model = PPO()
     score = 0.0
-    print_interval = 20
 
     for n_epi in range(100_000):
         s, _ = env.reset()
-        done = False
-        while not done:
+        episode_done = False
+        while not episode_done:
             for t in range(T_horizon):
                 prob = model.pi(torch.from_numpy(s).float())
                 m = Categorical(prob)
                 a = m.sample().item()
-                s_prime, r, done, truncated, info = env.step(a)
+                s_prime, r, terminated, truncated, info = env.step(a)
 
-                model.put_data((s, a, r/100.0, s_prime, prob[a].item(), done))
+                model.put_data((s, a, r/100.0, s_prime, prob[a].item(), terminated))
                 s = s_prime
 
                 score += r
-                if done:
+                if terminated or truncated:
+                    episode_done = True
                     break
+                    
 
             model.train_net()
 
-        if n_epi % print_interval == 0 and n_epi != 0:
-            print("# of episode :{}, avg score : {:.1f}".format(
-                n_epi, score/print_interval))
-            score = 0.0
+        if n_epi % 100 == 0:
+            results = evaluator.evaluate(lambda state: model.pi(
+                torch.from_numpy(state).float()).argmax())
+
+            eval_reward = 0
+            for k, v in results.items():
+                eval_reward += v["total_reward"]
+
+            evaluator.save_flight_trajectory_plot("test.png")
+
+            print("Episode", n_epi, ":", eval_reward / len(results))
 
     env.close()
 

@@ -4,13 +4,13 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 from common import Settings
+import matplotlib.pyplot as plt
 
 # It is recommended to normalize the environment
 # https://stable-baselines.readthedocs.io/en/master/guide/rl_tips.html#tips-and-tricks-when-creating-a-custom-environment
 
 
 class Normalization:
-
     MEAN = np.array([
         0,  # delta x
         0,  # delta y
@@ -43,9 +43,9 @@ class SpacecraftGym(gym.Env):
         "render_fps": 1,
     }
 
-    def __init__(self, env: Environment, discrete_actions=True):
+    def __init__(self, discrete_actions=True):
         super().__init__()
-        self.env = env
+        self.env = Environment(time_step_size=Settings.TIME_STEP_SIZE)
 
         self.discrete_actions = discrete_actions
         self.discrete_action_space = []
@@ -104,8 +104,8 @@ class SpacecraftGym(gym.Env):
             -1,  # cos angle
             -1,  # sin angle
             -max_angular_velocity,  # angular velocity
-            env.MIN_THRUST_LEVEL,  # thrust level
-            env.MIN_GIMBAL_LEVEL  # gimbal level
+            self.env.MIN_THRUST_LEVEL,  # thrust level
+            self.env.MIN_GIMBAL_LEVEL  # gimbal level
         ])
 
         obs_high = np.array([
@@ -116,8 +116,8 @@ class SpacecraftGym(gym.Env):
             1,  # cos angle
             1,  # sin angle
             max_angular_velocity,  # angular velocity
-            env.MAX_THRUST_LEVEL,  # thrust level
-            env.MAX_GIMBAL_LEVEL  # gimbal level
+            self.env.MAX_THRUST_LEVEL,  # thrust level
+            self.env.MAX_GIMBAL_LEVEL  # gimbal level
         ])
 
         obs_low = (obs_low - Normalization.MEAN) / Normalization.SD
@@ -125,7 +125,6 @@ class SpacecraftGym(gym.Env):
 
         self.observation_space = spaces.Box(
             obs_low, obs_high, dtype=np.float64)
-        self.reset()
 
     def render(self):
         pass
@@ -142,9 +141,14 @@ class LandingSpacecraftGym(SpacecraftGym):
     }
 
     def __init__(self, discrete_actions=True):
-        env = Environment(time_step_size=Settings.TIME_STEP_SIZE)
-        self.landing_area = (env.map.width//2, 10)
-        super().__init__(env, discrete_actions=discrete_actions)
+        super().__init__(discrete_actions=discrete_actions)
+        # Distance away from the landing are that the spacecraft spawn:
+        self.x_start = -100
+        self.x_end = 100
+        self.y_start = 100
+        self.y_end = 200
+        self.landing_area = (self.env.map.width//2, 10)
+        self.reset()
 
     def _get_obs(self):
         state = [
@@ -173,6 +177,10 @@ class LandingSpacecraftGym(SpacecraftGym):
         # Normalize obs
         obs = (obs - Normalization.MEAN) / Normalization.SD
 
+        y_distance_to_landing_area = (
+            self.env.position[1] - self.landing_area[1])
+        early_termination = False
+        has_landed = False
         if self.env.state == self.env.STATE_ENDED:
             distance_penalty = self.env.get_distance_to(*self.landing_area) * 2
             velocity_penalty = self.env.get_velocity() * 10
@@ -180,17 +188,17 @@ class LandingSpacecraftGym(SpacecraftGym):
             angular_velocity_penalty = np.fabs(self.env.angular_velocity) * 15
             reward = 1000 - (distance_penalty + angle_penalty +
                              velocity_penalty + angular_velocity_penalty)
-            flight_ended = True
+            has_landed = True
         elif np.fabs(self.env.angular_velocity) > 0.5 or self.env.get_velocity() > 15 or np.fabs(self.env.angle) > 0.6:
-            flight_ended = True
+            early_termination = True
             reward = -1000
-        elif (self.env.position[1] - self.landing_area[1]) < 20 and (np.fabs(self.env.angular_velocity) > 0.1 or np.fabs(self.env.angle) > 0.05 or self.env.get_velocity() > 3):
-            flight_ended = True
-            reward = -1000
+        # elif (self.env.position[1] - self.landing_area[1]) < 64 and (np.fabs(self.env.angular_velocity) > 0.1 or np.fabs(self.env.angle) > 0.05 or self.env.get_velocity() > 3):
+        #     early_termination = True
+        #     reward = -1000
         else:
             # vector pointing towards jump above the landing site
             landing_area_vec = (np.array(
-                [self.landing_area[0], self.landing_area[1]]) - np.array(self.env.position))
+                [self.landing_area[0], self.landing_area[1] + 32]) - np.array(self.env.position))
 
             # normalize landing site vector
             landing_area_vec = landing_area_vec / \
@@ -207,27 +215,30 @@ class LandingSpacecraftGym(SpacecraftGym):
 
             # reward -= self.env.get_distance_to(*self.landing_area) * 1e-2
 
-            flight_ended = False
-
             # Maybe add a positive but descending reward for staying in the air - that turns negative after a while
             # reward -= (self.env.get_velocity()**2) * 1e-2
             # reward -= np.fabs(self.env.angle)
 
-        info = {}
+        info = {
+            "early_termination": early_termination,
+            "landed": has_landed
+        }
 
-        terminated = flight_ended
-
-        # truncated = self.env.steps >= 2000
+        terminated = has_landed or early_termination
 
         truncated = False
+        if self.env.steps >= 2000:
+            print("Warning: n steps >= 2000")
+            truncated = True
+
         return obs, reward, terminated, truncated, info
 
     def reset(self, seed=None, options=None):
         self.env.reset()
 
         # Position spacecraft at some random location above the landing area:
-        self.env.position = (self.landing_area[0] + np.random.randint(-100, 100),
-                             self.landing_area[1] + np.random.randint(100, 200))
+        self.env.position = (self.landing_area[0] + np.random.randint(self.x_start, self.x_end),
+                             self.landing_area[1] + np.random.randint(self.y_start, self.y_end))
 
         # With a bit of velocity, angle and angular velocity
         self.env.velocity = (np.random.uniform(-5, 5),
@@ -242,9 +253,79 @@ class LandingSpacecraftGym(SpacecraftGym):
             self.env.MIN_GIMBAL_LEVEL, self.env.MAX_GIMBAL_LEVEL)
 
         info = {}
-        self.env.state = self.env.STATE_FLIGHT
         observation = self._get_obs()
         return observation, info
+
+
+class LandingEvaluator:
+
+    def __init__(self, n_x=4, n_y=3):
+        self.gym = LandingSpacecraftGym()
+        self.x_positions = np.linspace(
+            self.gym.x_start, self.gym.x_end, num=n_x)
+        self.y_positions = np.linspace(
+            self.gym.y_start, self.gym.y_end, num=n_y)
+        self.idx = (0, 0)
+        self.results = None
+
+    def _set_env(self, x, y):
+        self.gym.env.reset()
+        self.gym.env.position = (self.gym.landing_area[0] + x,
+                                 self.gym.landing_area[1] + y)
+        return self.gym._get_obs()
+
+    def get_avg_reward(self):
+        reward_sum = 0
+        for k, v in self.results.items():
+            reward_sum += v["total_reward"]
+
+        return reward_sum / len(self.results)
+
+    def save_flight_trajectory_plot(self, path):
+        plt.clf()
+        plt.xlim((100, 500))
+        plt.ylim((0, 300))
+        for k, v in self.results.items():
+            x_s = []
+            y_s = []
+            for x, y in v["flight_path"]:
+                x_s.append(x)
+                y_s.append(y)
+            plt.plot(x_s, y_s)
+            if v["early_termination"]:
+                plt.scatter(x_s[-1], y_s[-1], marker="x")
+            elif v["landed"]:
+                plt.scatter(x_s[-1], y_s[-1], marker="*")
+
+        plt.scatter(
+            self.gym.landing_area[0], self.gym.landing_area[1] + 32, label="Landing area")
+        plt.xlabel("x")
+        plt.ylabel("y")
+        plt.legend()
+        plt.savefig(path)
+
+    def evaluate(self, state_action_fn):
+        results = {}
+        for x in self.x_positions:
+            for y in self.y_positions:
+                obs = self._set_env(x, y)
+                done = False
+                key = (x, y)
+                results[key] = {}
+                results[key]["start"] = (x, y)
+                results[key]["flight_path"] = [self.gym.env.position]
+                results[key]["total_reward"] = 0
+                while not done:
+                    action = state_action_fn(obs)
+                    obs, reward, terminated, truncated, info = self.gym.step(
+                        action)
+                    results[key]["flight_path"].append(self.gym.env.position)
+                    results[key]["total_reward"] += reward
+                    results[key]["early_termination"] = info["early_termination"]
+                    results[key]["landed"] = info["landed"]
+                    done = terminated or truncated
+        self.results = results
+        return results
 
 
 class HoveringSpacecraftGym(SpacecraftGym):
