@@ -148,12 +148,14 @@ class LandingSpacecraftGym(SpacecraftGym):
         self.y_start = 100
         self.y_end = 200
         self.landing_area = (self.env.map.width//2, 10)
+        self.target_point = (
+            self.landing_area[0], self.landing_area[1] + self.env.height//2)
         self.reset()
 
     def _get_obs(self):
         state = [
-            self.env.position[0] - self.landing_area[0],  # delta x
-            self.env.position[1] - self.landing_area[1],  # delta y
+            self.env.position[0] - self.target_point[0],  # delta x
+            self.env.position[1] - self.target_point[1],  # delta y
             self.env.velocity[0],  # x velocity
             self.env.velocity[1],  # y velocity
             np.cos(self.env.angle),  # cos angle
@@ -173,37 +175,34 @@ class LandingSpacecraftGym(SpacecraftGym):
         self.env.step(action)
 
         # approximate. If ship lands with an angle, side may hold a bit of a positive value
-        y_distance_to_landing_area = np.fabs(
-            (self.env.position[1] - self.env.height//2) - self.landing_area[1])
+        y_distance_to_landing = np.fabs(
+            self.env.position[1] - self.target_point[1])
 
-        max_accepted_velocity = 3 + y_distance_to_landing_area/100 * 10
-        max_accepted_angular_velocity = 0.1 + y_distance_to_landing_area/100 * 0.5
-        max_accepted_angle = 0.1 + y_distance_to_landing_area/100 * 0.5
+        max_accepted_velocity = 1 + y_distance_to_landing/100 * 10
+        max_accepted_angular_velocity = 0.1 + y_distance_to_landing/100 * 0.5
+        max_accepted_angle = 0.1 + y_distance_to_landing/100 * 0.5
 
         terminated = False
         has_landed = False
 
-        x_distance = np.fabs(self.env.position[0] - self.landing_area[0])
+        x_distance = np.fabs(self.env.position[0] - self.target_point[0])
 
         if self.env.state == self.env.STATE_ENDED:
-
-            if y_distance_to_landing_area < 10:
-                print("Landed!!", y_distance_to_landing_area)
-                reward = 1000 - x_distance * 5
+            if y_distance_to_landing < 10:
+                reward = 200 - x_distance
                 has_landed = True
             else:
-                print("Crashed!")
-                reward = -1000
+                reward = -100
                 terminated = True
         elif np.fabs(self.env.angular_velocity) > max_accepted_angular_velocity or self.env.get_velocity() > max_accepted_velocity or np.fabs(self.env.angle) > max_accepted_angle:
             terminated = True
-            reward = -1000
+            reward = -100
         else:
             # use gaze heuristic to guide the vehicle towards the landing area:
 
             # vector pointing from bottom of spacecraft towards landing area
-            landing_area_vec = np.array(self.landing_area) - np.array(
-                [self.env.position[0], self.env.position[1] - self.env.height//2])
+            landing_area_vec = np.array(
+                self.target_point) - np.array(self.env.position)
 
             # normalize landing area vector
             landing_area_vec = landing_area_vec / \
@@ -214,20 +213,19 @@ class LandingSpacecraftGym(SpacecraftGym):
                 np.linalg.norm(self.env.velocity)
 
             # length of difference vector should do
-            direction_error = np.linalg.norm(velocity_vector - landing_area_vec)
+            direction_error = np.linalg.norm(
+                velocity_vector - landing_area_vec)
 
-            # scale direction error with distance to landing area
-            reward = -direction_error * \
-                self.env.get_distance_to(*self.landing_area) * 1e-1
+            reward = -direction_error
 
-            reward -= 0.1
+            # reward -= 0.5
 
             # Add a small negative penalty for each timestep
             # reward -= 0.5
 
         info = {
-            "failed": terminated,
-            "success": has_landed
+            "terminated": terminated,
+            "landed": has_landed
         }
 
         flight_ended = has_landed or terminated
@@ -295,6 +293,13 @@ class LandingEvaluator:
             length_sum += len(v["flight_path"]) - 1
         return length_sum / len(self.results)
 
+    def get_num_landings(self):
+        n_landings = 0
+        for k, v in self.results.items():
+            if v["landed"]:
+                n_landings += 1
+        return n_landings
+
     def save_flight_trajectory_plot(self, path):
         plt.clf()
         plt.xlim((100, 500))
@@ -306,9 +311,9 @@ class LandingEvaluator:
                 x_s.append(x)
                 y_s.append(y)
             plt.plot(x_s, y_s)
-            if v["failed"]:
+            if v["terminated"]:
                 plt.scatter(x_s[-1], y_s[-1], marker="x")
-            elif v["success"]:
+            elif v["landed"]:
                 plt.scatter(x_s[-1], y_s[-1], marker="*")
 
         plt.scatter(
@@ -335,8 +340,8 @@ class LandingEvaluator:
                         action)
                     results[key]["flight_path"].append(self.gym.env.position)
                     results[key]["total_reward"] += reward
-                    results[key]["failed"] = info["failed"]
-                    results[key]["success"] = info["success"]
+                    results[key]["terminated"] = info["terminated"]
+                    results[key]["landed"] = info["landed"]
                     done = terminated or truncated
         self.results = results
         return results

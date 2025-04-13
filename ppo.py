@@ -96,13 +96,15 @@ class PPO(nn.Module):
 
 
 def train_agent(learning_rate=0.0005,
-                gamma=0.98,
+                n_episodes=10_000,
+                gamma=0.99,
                 lmbda=0.95,
                 eps_clip=0.1,
                 K_epoch=3,
                 T_horizon=200,
                 eval_freq=100,
-                n_episodes=10_000
+                verbose=True,
+                eval_callback_fn=None,
                 ):
 
     env = LandingSpacecraftGym()
@@ -146,10 +148,17 @@ def train_agent(learning_rate=0.0005,
                 torch.from_numpy(state).float()).argmax())
 
             avg_reward = evaluator.get_avg_reward()
-            print("Episode", episode)
-            print("Average reward:", evaluator.get_avg_reward(),
-                  "!" * (avg_reward > best_reward))
-            print("Average length:", evaluator.get_avg_episode_length())
+
+            if eval_callback_fn:
+                eval_callback_fn(avg_reward)
+
+            if verbose:
+                print("Episode", episode)
+                print("Average reward:", evaluator.get_avg_reward(),
+                      "!" * (avg_reward > best_reward))
+                print("Average length:", evaluator.get_avg_episode_length())
+                print("Landings:", evaluator.get_num_landings(),
+                      "/", len(evaluator.results))
 
             if avg_reward > best_reward:
                 evaluator.save_flight_trajectory_plot("best_trajectory.png")
