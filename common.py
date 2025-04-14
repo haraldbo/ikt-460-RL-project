@@ -3,6 +3,7 @@ import random
 import torch
 import numpy as np
 
+
 class Settings:
     TIME_STEP_SIZE = 1/5
     SIMULATION_FPS = 30
@@ -11,11 +12,12 @@ class Settings:
     RENDERING_SPACECRAFT_DEBUGGING = True
     RENDER_SPACECRAFT_INFORMATION = True
 
+
 class ReplayBuffer():
     def __init__(self, buffer_size):
         self.buffer = deque(maxlen=buffer_size)
 
-    def put(self, transition):
+    def add_transition(self, transition):
         self.buffer.append(transition)
 
     def sample(self, n):
@@ -41,4 +43,3 @@ class ReplayBuffer():
 
     def size(self):
         return len(self.buffer)
-        

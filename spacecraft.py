@@ -1,6 +1,6 @@
 import numpy as np
 from enum import IntEnum
-from PIL import Image
+from common import Settings
 
 
 class MapTile(IntEnum):
@@ -27,7 +27,7 @@ class Environment:
     MIN_THRUST_LEVEL = 0
     MAX_THRUST_LEVEL = 10
 
-    def __init__(self, gravity=-9.81, time_step_size=1/30, map: Map = None):
+    def __init__(self, gravity=-9.81, time_step_size=Settings.TIME_STEP_SIZE, map: Map = None):
 
         self.gravity = gravity
         self.time_step_size = time_step_size

@@ -139,7 +139,7 @@ def train_landing_agent(
         tau=0.01,  # for target network soft update
         target_entropy=-1.0,  # for automated alpha update
         lr_alpha=0.001,  # for automated alpha update
-        reward_scale=10.0,
+        reward_scale=15.0,
         eval_every=20
 ):
     env = LandingSpacecraftGym(discrete_actions=False)
@@ -174,7 +174,7 @@ def train_landing_agent(
             a, log_prob = pi(torch.from_numpy(s).float())
             a = a.detach().numpy()
             s_prime, r, done, truncated, info = env.step(a)
-            memory.put((s, a, r/reward_scale, s_prime, done))
+            memory.add_transition((s, a, r/reward_scale, s_prime, done))
             s = s_prime
             if truncated:
                 break

@@ -18,8 +18,6 @@ buffer_limit = 50000
 tau = 0.005  # for target network soft update
 
 
-
-
 class MuNet(nn.Module):
     def __init__(self):
         super(MuNet, self).__init__()
@@ -53,7 +51,9 @@ class QNet(nn.Module):
 
 class OrnsteinUhlenbeckNoise:
     def __init__(self, mu):
-        self.theta, self.dt, self.sigma = 0.1, 0.01, 0.1
+        self.theta = 0.1
+        self.dt = 0.01
+        self.sigma = 0.1
         self.mu = mu
         self.x_prev = np.zeros_like(self.mu)
 
@@ -103,7 +103,8 @@ def main():
     evaluator = LandingEvaluator(discrete_actions=False)
     training_directory = Path.cwd() / "ddpg"
     os.makedirs(training_directory, exist_ok=True)
-    memory = ReplayBuffer()
+    memory = ReplayBuffer(50000)
+    reward_scaling = 10
 
     q, q_target = QNet(), QNet()
     q_target.load_state_dict(q.state_dict())
@@ -112,6 +113,8 @@ def main():
 
     mu_optimizer = optim.Adam(mu.parameters(), lr=lr_mu)
     q_optimizer = optim.Adam(q.parameters(), lr=lr_q)
+
+    # "to generate temporally correlated exploration for exploration efficiency in physical control problems with inertia" - https://arxiv.org/pdf/1509.02971
     ou_noise = OrnsteinUhlenbeckNoise(mu=np.zeros(2))
 
     best_score = -float("inf")
@@ -124,7 +127,7 @@ def main():
             a = mu(torch.from_numpy(s).float())
             a = np.clip(a.detach().numpy() + ou_noise(), -1, 1)
             s_prime, r, done, truncated, info = env.step(a)
-            memory.put((s, a, r/100.0, s_prime, done))
+            memory.add_transition((s, a, r/reward_scaling, s_prime, done))
             s = s_prime
             if truncated:
                 break

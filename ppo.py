@@ -123,9 +123,10 @@ def train_model(learning_rate=0.0005,
                 eval_freq=10,
                 verbose=True,
                 name="landing",
-                env=LandingSpacecraftGym()
+                reward_scaling = 100,
                 ):
 
+    env = LandingSpacecraftGym()
     evaluator = LandingEvaluator()
     transition_buffer = TransitionBuffer()
     model = PPO()
@@ -145,7 +146,7 @@ def train_model(learning_rate=0.0005,
                 s_prime, r, terminated, truncated, info = env.step(a)
 
                 transition_buffer.add_transition(
-                    (s, a, r/100.0, s_prime, prob[a].item(), terminated))
+                    (s, a, r/reward_scaling, s_prime, prob[a].item(), terminated))
 
                 s = s_prime
 
