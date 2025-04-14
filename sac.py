@@ -1,64 +1,20 @@
-# https://github.com/seungeunrho/minimalRL/blob/master/sac.py
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Normal
 import numpy as np
-import collections
-import random
 from gyms import LandingSpacecraftGym, LandingEvaluator, create_normalized_observation
 from pathlib import Path
 import os
-
-# Hyperparameters
-lr_pi = 0.0005
-lr_q = 0.001
-init_alpha = 0.01
-gamma = 0.98
-batch_size = 32
-buffer_limit = 50000
-tau = 0.01  # for target network soft update
-target_entropy = -1.0  # for automated alpha update
-lr_alpha = 0.001  # for automated alpha update
-
-
-class ReplayBuffer():
-    def __init__(self):
-        self.buffer = collections.deque(maxlen=buffer_limit)
-
-    def put(self, transition):
-        self.buffer.append(transition)
-
-    def sample(self, n):
-        mini_batch = random.sample(self.buffer, n)
-        s_lst, a_lst, r_lst, s_prime_lst, done_mask_lst = [], [], [], [], []
-
-        for transition in mini_batch:
-            s, a, r, s_prime, done = transition
-            s_lst.append(s)
-            a_lst.append(a)
-            r_lst.append([r])
-            s_prime_lst.append(s_prime)
-            done_mask = 0.0 if done else 1.0
-            done_mask_lst.append([done_mask])
-
-        s_lst = np.array(s_lst)
-        s_prime_lst = np.array(s_prime_lst)
-        a_lst = np.array(a_lst)
-
-        return torch.tensor(s_lst, dtype=torch.float), torch.tensor(a_lst, dtype=torch.float), \
-            torch.tensor(r_lst, dtype=torch.float), torch.tensor(s_prime_lst, dtype=torch.float), \
-            torch.tensor(done_mask_lst, dtype=torch.float)
-
-    def size(self):
-        return len(self.buffer)
+from common import ReplayBuffer
+import optuna
 
 
 class PolicyTrainingNet(nn.Module):
-    def __init__(self, learning_rate):
+    def __init__(self, learning_rate, init_alpha, lr_alpha, target_entropy):
         super(PolicyTrainingNet, self).__init__()
+        self.target_entropy = target_entropy
         self.fc1 = nn.Linear(9, 128)
         self.fc_mu = nn.Linear(128, 2)
         self.fc_std = nn.Linear(128, 2)
@@ -96,7 +52,7 @@ class PolicyTrainingNet(nn.Module):
 
         self.log_alpha_optimizer.zero_grad()
         alpha_loss = -(self.log_alpha.exp() *
-                       (log_prob + target_entropy).detach()).mean()
+                       (log_prob + self.target_entropy).detach()).mean()
         alpha_loss.backward()
         self.log_alpha_optimizer.step()
 
@@ -149,13 +105,13 @@ class QNet(nn.Module):
         loss.mean().backward()
         self.optimizer.step()
 
-    def soft_update(self, net_target):
+    def soft_update(self, net_target, tau):
         for param_target, param in zip(net_target.parameters(), self.parameters()):
             param_target.data.copy_(
                 param_target.data * (1.0 - tau) + param.data * tau)
 
 
-def calc_target(pi, q1, q2, mini_batch):
+def calc_target(pi, q1, q2, mini_batch, gamma):
     s, a, r, s_prime, done = mini_batch
 
     with torch.no_grad():
@@ -171,7 +127,21 @@ def calc_target(pi, q1, q2, mini_batch):
     return target
 
 
-def main():
+def train_landing_agent(
+        n_episodes=5000,
+        lr_pi=0.0005,
+        lr_q=0.001,
+        init_alpha=0.01,  # initial value of the entropy regularization coef
+        gamma=0.98,  # discount factor
+        batch_size=32,  # number of transitions to sample for each training loop
+        n_batches=20,  # how many batches to train on after each episode
+        buffer_size=50000,  # number of transitions to store int he replay buffer
+        tau=0.01,  # for target network soft update
+        target_entropy=-1.0,  # for automated alpha update
+        lr_alpha=0.001,  # for automated alpha update
+        reward_scale=10.0,
+        eval_every=20
+):
     env = LandingSpacecraftGym(discrete_actions=False)
     evaluator = LandingEvaluator(discrete_actions=False)
     eval_net = PolicyNet()
@@ -179,17 +149,24 @@ def main():
 
     os.makedirs(training_directory, exist_ok=True)
 
-    memory = ReplayBuffer()
-    q1, q2, q1_target, q2_target = QNet(
-        lr_q), QNet(lr_q), QNet(lr_q), QNet(lr_q)
-    pi = PolicyTrainingNet(lr_pi)
+    memory = ReplayBuffer(buffer_size=buffer_size)
+    q1 = QNet(lr_q)
+    q2 = QNet(lr_q)
+    q1_target = QNet(lr_q)
+    q2_target = QNet(lr_q)
+    pi = PolicyTrainingNet(
+        learning_rate=lr_pi,
+        init_alpha=init_alpha,
+        lr_alpha=lr_alpha,
+        target_entropy=target_entropy
+    )
 
     q1_target.load_state_dict(q1.state_dict())
     q2_target.load_state_dict(q2.state_dict())
 
-    best_score = -float('inf')
+    highest_avg_reward = -float('inf')
 
-    for episode in range(10000):
+    for episode in range(n_episodes):
         s, _ = env.reset()
         done = False
 
@@ -197,22 +174,23 @@ def main():
             a, log_prob = pi(torch.from_numpy(s).float())
             a = a.detach().numpy()
             s_prime, r, done, truncated, info = env.step(a)
-            memory.put((s, a, r/10.0, s_prime, done))
+            memory.put((s, a, r/reward_scale, s_prime, done))
             s = s_prime
             if truncated:
                 break
 
         if memory.size() > 1000:
-            for i in range(20):
+            for i in range(n_batches):
                 mini_batch = memory.sample(batch_size)
-                td_target = calc_target(pi, q1_target, q2_target, mini_batch)
+                td_target = calc_target(
+                    pi, q1_target, q2_target, mini_batch, gamma)
                 q1.train_net(td_target, mini_batch)
                 q2.train_net(td_target, mini_batch)
                 pi.train_net(q1, q2, mini_batch)
-                q1.soft_update(q1_target)
-                q2.soft_update(q2_target)
+                q1.soft_update(q1_target, tau)
+                q2.soft_update(q2_target, tau)
 
-        if episode % 20 == 0 and episode > 0:
+        if episode % eval_every == 0 and episode > 0:
             eval_net.fc1.load_state_dict(pi.fc1.state_dict())
             eval_net.fc_mu.load_state_dict(pi.fc_mu.state_dict())
 
@@ -223,19 +201,62 @@ def main():
             evaluator.save_flight_trajectory_plot(
                 training_directory / "latest_flight_trajectories.png")
             avg_reward = evaluator.get_avg_reward()
-            if avg_reward > best_score:
+            if avg_reward > highest_avg_reward:
                 torch.save(eval_net.state_dict(),
                            training_directory/"landing.pt")
-                best_score = avg_reward
+                highest_avg_reward = avg_reward
                 evaluator.save_flight_trajectory_plot(
                     training_directory / "best_flight_trajectories.png")
 
-    env.close()
+    return highest_avg_reward
+
+
+def optuna_objective(trial: optuna.Trial):
+    """
+
+    lr_pi=0.0005,
+        lr_q=0.001,
+        init_alpha=0.01,
+        gamma=0.98,
+        batch_size=32,
+        buffer_size=50000,
+        tau=0.01,  # for target network soft update
+        target_entropy=-1.0,  # for automated alpha update
+        lr_alpha=0.001, 
+    """
+
+    """
+    "We also examine how sensitive SAC is to some of
+    the most important hyperparameters, namely reward scaling
+    and target value update smoothing constant."
+    """
+
+    return -train_landing_agent(
+        n_episodes=1000,
+        lr_pi=trial.suggest_float("lr_pi", 0.0001, 0.001, step=0.0002),
+        lr_q=trial.suggest_float("lr_q", 0.0005, 0.002, step=0.0005),
+        init_alpha=0.01,  # initial value of the entropy regularization coef
+        gamma=trial.suggest_float(
+            "gamma", 0.90, 1, step=0.01),  # discount factor
+        # number of transitions to sample for each training loop
+        batch_size=trial.suggest_int("batch_size", 16, 128, step=16),
+        # how many batches to train on after each episode
+        n_batches=trial.suggest_int("n_batches", 10, 50, step=10),
+        buffer_size=50000,  # number of transitions to store int he replay buffer
+        # for target network soft update
+        tau=trial.suggest_float("tau", 0.0001, 0.002, step=0.0001),
+        target_entropy=-1.0,  # for automated alpha update
+        lr_alpha=0.001,  # for automated alpha update
+        reward_scale=trial.suggest_int("reward_scale", 2, 20, step=2)
+    )
+
+
+def find_good_hyperparams():
+    storage = f"sqlite:///sac/sac_landing.db"
+    study = optuna.create_study(study_name="sac_landing", storage=storage)
+    study.optimize(optuna_objective, n_trials=100)
 
 
 if __name__ == '__main__':
-    main()
-    # pi = PolicyNet()
-    # pi.load_state_dict(torch.load("./sac/landing.pt", weights_only=True))
-
-    # print(pi)
+    train_landing_agent()
+    # find_good_hyperparams()
