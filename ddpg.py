@@ -1,4 +1,3 @@
-import gymnasium as gym
 import random
 import collections
 import numpy as np
@@ -6,7 +5,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from gyms import LandingSpacecraftGym
+from gyms import LandingSpacecraftGym, LandingEvaluator, create_normalized_observation
+from pathlib import Path
+import os
+
 
 # Hyperparameters
 lr_mu = 0.0005
@@ -55,7 +57,6 @@ class MuNet(nn.Module):
     def forward(self, x):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
-        # Multipled by 2 because the action space of the Pendulum-v0 is [-2,2]
         mu = torch.tanh(self.fc_mu(x))
         return mu
 
@@ -112,9 +113,23 @@ def soft_update(net, net_target):
             param_target.data * (1.0 - tau) + param.data * tau)
 
 
+class LandingAgent:
+
+    def __init__(self):
+        self.pi = MuNet()
+        self.pi.load_state_dict(torch.load(
+            Path.cwd() / "ddpg" / "landing.pt", weights_only=True))
+
+    def get_action(self, env, target):
+        obs = create_normalized_observation(env, target)
+        return self.pi(torch.from_numpy(obs).float()).detach().numpy()
+
+
 def main():
-    # env = gym.make('Pendulum-v1', max_episode_steps=200, autoreset=True)
     env = LandingSpacecraftGym(discrete_actions=False)
+    evaluator = LandingEvaluator(discrete_actions=False)
+    training_directory = Path.cwd() / "ddpg"
+    os.makedirs(training_directory, exist_ok=True)
     memory = ReplayBuffer()
 
     q, q_target = QNet(), QNet()
@@ -122,26 +137,24 @@ def main():
     mu, mu_target = MuNet(), MuNet()
     mu_target.load_state_dict(mu.state_dict())
 
-    score = 0.0
-    print_interval = 20
-
     mu_optimizer = optim.Adam(mu.parameters(), lr=lr_mu)
     q_optimizer = optim.Adam(q.parameters(), lr=lr_q)
     ou_noise = OrnsteinUhlenbeckNoise(mu=np.zeros(2))
 
-    for n_epi in range(10000):
+    best_score = -float("inf")
+
+    for episode in range(10000):
         s, _ = env.reset()
         done = False
 
-        count = 0
-        while count < 200 and not done:
+        while not done:
             a = mu(torch.from_numpy(s).float())
             a = np.clip(a.detach().numpy() + ou_noise(), -1, 1)
             s_prime, r, done, truncated, info = env.step(a)
             memory.put((s, a, r/100.0, s_prime, done))
-            score += r
             s = s_prime
-            count += 1
+            if truncated:
+                break
 
         if memory.size() > 2000:
             for i in range(10):
@@ -150,10 +163,19 @@ def main():
                 soft_update(mu, mu_target)
                 soft_update(q,  q_target)
 
-        if n_epi % print_interval == 0 and n_epi != 0:
-            print("# of episode :{}, avg score : {:.1f}".format(
-                n_epi, score/print_interval))
-            score = 0.0
+        if episode % 20 == 0:
+            evaluator.evaluate(lambda s: mu(
+                torch.from_numpy(s).float()).detach().numpy())
+            print("Episode", episode)
+            evaluator.print_results()
+            evaluator.save_flight_trajectory_plot(
+                training_directory / "latest_flight_trajectories.png")
+            avg_reward = evaluator.get_avg_reward()
+            if avg_reward > best_score:
+                torch.save(mu.state_dict(), training_directory / "landing.pt")
+                best_score = avg_reward
+                evaluator.save_flight_trajectory_plot(
+                    training_directory / "best_flight_trajectories.png")
 
     env.close()
 

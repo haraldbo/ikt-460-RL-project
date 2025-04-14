@@ -3,10 +3,22 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
-from gyms import LandingSpacecraftGym, LandingEvaluator
-import optuna
+from gyms import LandingSpacecraftGym, LandingEvaluator, create_normalized_observation
 import os
 from pathlib import Path
+import optuna
+
+
+class LandingAgent:
+
+    def __init__(self):
+        self.ppo = PPO()
+        self.ppo.load(Path.cwd() / "ppo" / "landing.pt")
+        self.action_space = LandingSpacecraftGym().discrete_action_space
+
+    def get_action(self, env, target):
+        obs = create_normalized_observation(env, target)
+        return self.action_space[self.ppo.pi(torch.from_numpy(obs).float()).argmax()]
 
 
 class TransitionBuffer:
@@ -58,6 +70,9 @@ class PPO(nn.Module):
         x = F.relu(self.fc1(x))
         v = self.fc_v(x)
         return v
+
+    def load(self, path):
+        self.load_state_dict(torch.load(path, weights_only=True))
 
     def train_network(self,
                       transition_buffer: TransitionBuffer,
@@ -155,16 +170,14 @@ def train_model(learning_rate=0.0005,
             avg_reward = evaluator.get_avg_reward()
 
             if verbose:
-                print("Episode", episode)
-                print("Average reward:", evaluator.get_avg_reward(),
-                      "!" * (avg_reward > best_reward))
-                print("Average length:", evaluator.get_avg_episode_length())
-                print("Landings:", evaluator.get_num_landings(),
-                      "/", len(evaluator.results))
+                evaluator.print_results()
+
+            evaluator.save_flight_trajectory_plot(
+                training_directory / "latest_flight_trajectories.png")
 
             if avg_reward > best_reward:
                 evaluator.save_flight_trajectory_plot(
-                    training_directory / "best_trajectory.png")
+                    training_directory / "best_flight_trajectories.png")
                 best_reward = avg_reward
                 torch.save(model.state_dict(),
                            training_directory / f"{name}.pt")
@@ -194,5 +207,5 @@ def find_good_hyperparams():
 
 
 if __name__ == '__main__':
-    find_good_hyperparams()
-    # train_model()
+    # find_good_hyperparams()
+    train_model()

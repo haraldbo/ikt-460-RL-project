@@ -1,7 +1,7 @@
 from gyms import LandingSpacecraftGym, SpacecraftGym, HoveringSpacecraftGym, Normalization
 from spacecraft import Environment
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
-from stable_baselines3 import PPO, DDPG
+from stable_baselines3 import PPO, DDPG, SAC
 import numpy as np
 from common import Settings, Agent
 

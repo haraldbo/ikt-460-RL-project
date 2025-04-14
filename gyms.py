@@ -1,21 +1,19 @@
 from spacecraft import Environment
-from copy import copy
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 from common import Settings
 import matplotlib.pyplot as plt
 
+
 # It is recommended to normalize the environment
 # https://stable-baselines.readthedocs.io/en/master/guide/rl_tips.html#tips-and-tricks-when-creating-a-custom-environment
-
-
 class Normalization:
     MEAN = np.array([
         0,  # delta x
         0,  # delta y
         0,  # velocity x
-        -5,  # velocity y
+        0,  # velocity y
         1,  # cos (angle)
         0,  # sin(angle)
         0,  # angular velocity
@@ -24,16 +22,34 @@ class Normalization:
     ])
 
     SD = np.array([
-        100,  # delta x
-        100,  # delta y
-        10,  # velocity x
-        10,  # velocity y
+        50,  # delta x
+        50,  # delta y
+        5,  # velocity x
+        5,  # velocity y
         1,  # cos(angle)
         1,  # sin(angle)
-        1,  # angular velocity
+        0.2,  # angular velocity
         5,  # thrust level
-        5,  # gimbal level
+        3,  # gimbal level
     ])
+
+
+def create_normalized_observation(env: Environment, target_point):
+    state = np.array([
+        env.position[0] - target_point[0],  # delta x
+        env.position[1] - target_point[1],  # delta y
+        env.velocity[0],  # x velocity
+        env.velocity[1],  # y velocity
+        np.cos(env.angle),  # cos angle
+        np.sin(env.angle),  # sin angle
+        env.angular_velocity,  # angular velocity
+        env.thrust_level,  # thrust level
+        env.gimbal_level  # gimbal level
+    ], dtype=np.float64)
+
+    state = (state - Normalization.MEAN) / Normalization.SD
+
+    return state
 
 
 class SpacecraftGym(gym.Env):
@@ -142,7 +158,7 @@ class LandingSpacecraftGym(SpacecraftGym):
 
     def __init__(self, discrete_actions=True):
         super().__init__(discrete_actions=discrete_actions)
-        # Distance away from the landing are that the spacecraft spawn:
+        # Distance away from the landing area that the spacecraft spawn:
         self.x_start = -100
         self.x_end = 100
         self.y_start = 100
@@ -151,20 +167,6 @@ class LandingSpacecraftGym(SpacecraftGym):
         self.target_point = (
             self.landing_area[0], self.landing_area[1] + self.env.height//2)
         self.reset()
-
-    def _get_obs(self):
-        state = [
-            self.env.position[0] - self.target_point[0],  # delta x
-            self.env.position[1] - self.target_point[1],  # delta y
-            self.env.velocity[0],  # x velocity
-            self.env.velocity[1],  # y velocity
-            np.cos(self.env.angle),  # cos angle
-            np.sin(self.env.angle),  # sin angle
-            self.env.angular_velocity,  # angular velocity
-            self.env.thrust_level,  # thrust level
-            self.env.gimbal_level  # gimbal level
-        ]
-        return np.array(state, dtype=np.float64)
 
     def step(self, action_input):
         if self.discrete_actions:
@@ -201,28 +203,27 @@ class LandingSpacecraftGym(SpacecraftGym):
             # use gaze heuristic to guide the vehicle towards the landing area:
 
             # vector pointing from bottom of spacecraft towards landing area
-            landing_area_vec = np.array(
+            landing_area_unit_vec = np.array(
                 self.target_point) - np.array(self.env.position)
 
-            # normalize landing area vector
-            landing_area_vec = landing_area_vec / \
-                np.linalg.norm(landing_area_vec)
+            # unit vector point torward landing area
+            landing_area_unit_vec = landing_area_unit_vec / \
+                np.linalg.norm(landing_area_unit_vec)
 
-            # velocity vector normalized
-            velocity_vector = np.array(self.env.velocity) / \
+            # unit velocity vector
+            velocity_unit_vector = np.array(self.env.velocity) / \
                 np.linalg.norm(self.env.velocity)
 
             # length of difference vector should do
             # it is in range [0, 2]
             direction_error = np.linalg.norm(
-                velocity_vector - landing_area_vec)
+                velocity_unit_vector - landing_area_unit_vec)
 
-            reward = 0.2-direction_error
-
-            # reward -= 0.5
-
-            # Add a small negative penalty for each timestep
-            # reward -= 0.5
+            # If it flies directly towards the target it earns 0.5 reward
+            # If angle between vectors is greater than pi/6, it gets a negative reward
+            # If it flies in the opposite direction it earns -1.5 reward
+            # May try other values, like arcsin(pi/12)
+            reward = 0.5-direction_error
 
         info = {
             "terminated": terminated,
@@ -236,8 +237,7 @@ class LandingSpacecraftGym(SpacecraftGym):
             # print("Warning: n steps >= 1000")
             truncated = True
 
-        obs = self._get_obs()
-        obs = (obs - Normalization.MEAN) / Normalization.SD
+        obs = create_normalized_observation(self.env, self.target_point)
         return obs, reward, flight_ended, truncated, info
 
     def reset(self, seed=None, options=None):
@@ -260,7 +260,8 @@ class LandingSpacecraftGym(SpacecraftGym):
             self.env.MIN_GIMBAL_LEVEL, self.env.MAX_GIMBAL_LEVEL)
 
         info = {}
-        observation = self._get_obs()
+        observation = create_normalized_observation(
+            self.env, self.target_point)
         return observation, info
 
 
@@ -279,7 +280,7 @@ class LandingEvaluator:
         self.gym.env.reset()
         self.gym.env.position = (self.gym.landing_area[0] + x,
                                  self.gym.landing_area[1] + y)
-        return self.gym._get_obs()
+        return create_normalized_observation(self.gym.env, self.gym.target_point)
 
     def get_avg_reward(self):
         reward_sum = 0
@@ -301,6 +302,12 @@ class LandingEvaluator:
                 n_landings += 1
         return n_landings
 
+    def print_results(self):
+        print(f"Average reward: {self.get_avg_reward()}")
+        print(f"Average length: {self.get_avg_episode_length()}")
+        print(
+            f"Successful landings: {self.get_num_landings()} / {len(self.results)}")
+
     def save_flight_trajectory_plot(self, path):
         plt.clf()
         plt.xlim((100, 500))
@@ -318,8 +325,8 @@ class LandingEvaluator:
                 plt.scatter(x_s[-1], y_s[-1], color=color, marker="x")
             elif v["landed"]:
                 plt.scatter(x_s[-1], y_s[-1], color=color, marker="*")
-            
-        plt.scatter(x_s[0], y_s[0], color="black", marker="o")
+
+            plt.scatter(x_s[0], y_s[0], color="black", marker="o")
 
         plt.scatter([self.gym.landing_area[0]], [
                     self.gym.landing_area[1] + 32], s=[500], label="Landing area", zorder=-1)
