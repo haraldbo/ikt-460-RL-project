@@ -104,7 +104,7 @@ def main():
     training_directory = Path.cwd() / "ddpg"
     os.makedirs(training_directory, exist_ok=True)
     memory = ReplayBuffer(50000)
-    reward_scaling = 10
+    reward_scaling = 100
 
     q, q_target = QNet(), QNet()
     q_target.load_state_dict(q.state_dict())

@@ -127,11 +127,10 @@ def test_flight(commander: SpacecraftCommander, init_env: Environment):
 
 if __name__ == "__main__":
     init_env = Environment()
-    init_env.position = (init_env.map.width//2, init_env.map.height//2)
-    init_env.angular_velocity = 0.1
+    init_env.position = (init_env.map.width//2+250, init_env.map.height-50)
 
     spacecraft_commander = SpacecraftCommander(
-        landing_agent=SACLandingAgent(),
+        landing_agent=PPOLandingAgent(),
         hovering_agent=PPOLandingAgent(),
         landing_point=(init_env.map.width//2, 10),
         hovering_point=(init_env.map.width//2, init_env.map.height//2)

@@ -113,18 +113,17 @@ class PPO(nn.Module):
             optimizer.step()
 
 
-def train_model(learning_rate=0.0005,
-                n_episodes=10_000,
-                gamma=0.99,
-                lmbda=0.95,
-                eps_clip=0.1,
-                K_epoch=3,
-                T_horizon=200,
-                eval_freq=10,
-                verbose=True,
-                name="landing",
-                reward_scaling = 100,
-                ):
+def train_landing_agent(learning_rate=0.0005,
+                        n_episodes=10_000,
+                        gamma=0.99,
+                        lmbda=0.95,
+                        eps_clip=0.1,
+                        K_epoch=3,
+                        T_horizon=200,
+                        eval_freq=10,
+                        verbose=True,
+                        reward_scaling=100,
+                        ):
 
     env = LandingSpacecraftGym()
     evaluator = LandingEvaluator()
@@ -171,6 +170,7 @@ def train_model(learning_rate=0.0005,
             avg_reward = evaluator.get_avg_reward()
 
             if verbose:
+                print("Episode", episode)
                 evaluator.print_results()
 
             evaluator.save_flight_trajectory_plot(
@@ -181,14 +181,14 @@ def train_model(learning_rate=0.0005,
                     training_directory / "best_flight_trajectories.png")
                 best_reward = avg_reward
                 torch.save(model.state_dict(),
-                           training_directory / f"{name}.pt")
+                           training_directory / f"landing.pt")
 
     return best_reward
 
 
 def optuna_objective(trial: optuna.Trial):
 
-    return -train_model(
+    return -train_landing_agent(
         n_episodes=1000,
         verbose=False,
         eval_freq=20,
@@ -209,4 +209,4 @@ def find_good_hyperparams():
 
 if __name__ == '__main__':
     # find_good_hyperparams()
-    train_model()
+    train_landing_agent()

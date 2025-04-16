@@ -159,10 +159,10 @@ class LandingSpacecraftGym(SpacecraftGym):
     def __init__(self, discrete_actions=True):
         super().__init__(discrete_actions=discrete_actions)
         # Distance away from the landing area that the spacecraft spawn:
-        self.x_start = -100
-        self.x_end = 100
+        self.x_start = -200
+        self.x_end = 200
         self.y_start = 100
-        self.y_end = 200
+        self.y_end = 500
         self.landing_area = (self.env.map.width//2, 10)
         self.target_point = (
             self.landing_area[0], self.landing_area[1] + self.env.height//2)
@@ -219,11 +219,7 @@ class LandingSpacecraftGym(SpacecraftGym):
             direction_error = np.linalg.norm(
                 velocity_unit_vector - landing_area_unit_vec)
 
-            # If it flies directly towards the target it earns 0.5 reward
-            # If angle between vectors is greater than pi/6, it gets a negative reward
-            # If it flies in the opposite direction it earns -1.5 reward
-            # May try other values, like arcsin(pi/12)
-            reward = 0.5-direction_error
+            reward = 0.3-direction_error
 
         info = {
             "terminated": terminated,
@@ -310,8 +306,8 @@ class LandingEvaluator:
 
     def save_flight_trajectory_plot(self, path):
         plt.clf()
-        plt.xlim((100, 500))
-        plt.ylim((0, 300))
+        plt.xlim((0, 600))
+        plt.ylim((0, 600))
         for k, v in self.results.items():
             x_s = []
             y_s = []
