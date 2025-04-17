@@ -7,15 +7,7 @@ from gyms import LandingSpacecraftGym, LandingEvaluator, create_normalized_obser
 from pathlib import Path
 import os
 from common import ReplayBuffer
-
-
-# Hyperparameters
-lr_mu = 0.0005
-lr_q = 0.001
-gamma = 0.99
-batch_size = 32
-buffer_limit = 50000
-tau = 0.005  # for target network soft update
+import optuna
 
 
 class MuNet(nn.Module):
@@ -65,7 +57,7 @@ class OrnsteinUhlenbeckNoise:
         return x
 
 
-def train(mu, mu_target, q, q_target, memory, q_optimizer, mu_optimizer):
+def train(mu, mu_target, q, q_target, memory, q_optimizer, mu_optimizer, batch_size, gamma):
     s, a, r, s_prime, done_mask = memory.sample(batch_size)
 
     target = r + gamma * q_target(s_prime, mu_target(s_prime)) * done_mask
@@ -80,7 +72,7 @@ def train(mu, mu_target, q, q_target, memory, q_optimizer, mu_optimizer):
     mu_optimizer.step()
 
 
-def soft_update(net, net_target):
+def soft_update(net, net_target, tau):
     for param_target, param in zip(net_target.parameters(), net.parameters()):
         param_target.data.copy_(
             param_target.data * (1.0 - tau) + param.data * tau)
@@ -98,13 +90,23 @@ class LandingAgent:
         return self.pi(torch.from_numpy(obs).float()).detach().numpy()
 
 
-def main():
+def train_landing_agent(
+        lr_mu=0.0005,
+        lr_q=0.001,
+        gamma=0.99,
+        batch_size=32,
+        buffer_limit=50000,
+        tau=0.005,
+        reward_scale=10,
+        n_episodes=5_000,
+        eval_freq=10,
+):
     env = LandingSpacecraftGym(discrete_actions=False)
     evaluator = LandingEvaluator(discrete_actions=False)
     training_directory = Path.cwd() / "ddpg"
+    eval_csv = training_directory / f"eval.csv"
     os.makedirs(training_directory, exist_ok=True)
-    memory = ReplayBuffer(50000)
-    reward_scaling = 100
+    memory = ReplayBuffer(buffer_limit)
 
     q, q_target = QNet(), QNet()
     q_target.load_state_dict(q.state_dict())
@@ -117,9 +119,9 @@ def main():
     # "to generate temporally correlated exploration for exploration efficiency in physical control problems with inertia" - https://arxiv.org/pdf/1509.02971
     ou_noise = OrnsteinUhlenbeckNoise(mu=np.zeros(2))
 
-    best_score = -float("inf")
+    highest_avg_reward = -float("inf")
 
-    for episode in range(10000):
+    for episode in range(n_episodes):
         s, _ = env.reset()
         done = False
 
@@ -127,7 +129,7 @@ def main():
             a = mu(torch.from_numpy(s).float())
             a = np.clip(a.detach().numpy() + ou_noise(), -1, 1)
             s_prime, r, done, truncated, info = env.step(a)
-            memory.add_transition((s, a, r/reward_scaling, s_prime, done))
+            memory.add_transition((s, a, r/reward_scale, s_prime, done))
             s = s_prime
             if truncated:
                 break
@@ -135,11 +137,12 @@ def main():
         if memory.size() > 2000:
             for i in range(10):
                 train(mu, mu_target, q, q_target,
-                      memory, q_optimizer, mu_optimizer)
-                soft_update(mu, mu_target)
-                soft_update(q,  q_target)
+                      memory, q_optimizer, mu_optimizer,
+                      batch_size, gamma)
+                soft_update(mu, mu_target, tau)
+                soft_update(q,  q_target, tau)
 
-        if episode % 20 == 0:
+        if episode % eval_freq == 0 and episode > 0:
             evaluator.evaluate(lambda s: mu(
                 torch.from_numpy(s).float()).detach().numpy())
             print("Episode", episode)
@@ -147,14 +150,37 @@ def main():
             evaluator.save_flight_trajectory_plot(
                 training_directory / "latest_flight_trajectories.png")
             avg_reward = evaluator.get_avg_reward()
-            if avg_reward > best_score:
+            if avg_reward > highest_avg_reward:
                 torch.save(mu.state_dict(), training_directory / "landing.pt")
-                best_score = avg_reward
+                highest_avg_reward = avg_reward
                 evaluator.save_flight_trajectory_plot(
                     training_directory / "best_flight_trajectories.png")
+            evaluator.append_to_csv(episode, eval_csv)
+            print("Best:", highest_avg_reward)
 
     env.close()
 
 
+def optuna_objective(trial: optuna.Trial):
+
+    return -train_landing_agent(
+        lr_mu=trial.suggest_float("lr_mu", 0.0001, 0.001, step=0.0002),
+        lr_q=trial.suggest_float("lr_q", 0.0002, 0.001, step=0.0002),
+        gamma=trial.suggest_float("gamma", 0.9, 1, step=0.01),
+        batch_size=trial.suggest_int("batch_size", 32, 128, step=32),
+        buffer_limit=50000,
+        tau=trial.suggest_float("tau", 0.0001, 0.005, step=0.0005),
+        reward_scale=trial.suggest_int("reward_scale", 5, 50, step=5)
+    )
+
+
+def find_good_hyperparams():
+    storage = f"sqlite:///ddpg/ddpg_landing.db"
+    study = optuna.create_study(study_name="ddpg_landing", storage=storage)
+    study.optimize(optuna_objective, n_trials=100)
+    study.trials_dataframe().to_csv("ddpg_landing.csv")
+
+
 if __name__ == '__main__':
-    main()
+    train_landing_agent()
+    # find_good_hyperparams()

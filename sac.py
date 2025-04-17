@@ -9,6 +9,7 @@ from pathlib import Path
 import os
 from common import ReplayBuffer
 import optuna
+import time
 
 
 class PolicyTrainingNet(nn.Module):
@@ -140,7 +141,7 @@ def train_landing_agent(
         target_entropy=-1.0,  # for automated alpha update
         lr_alpha=0.001,  # for automated alpha update
         reward_scale=15.0,
-        eval_every=20
+        eval_freq=10
 ):
     env = LandingSpacecraftGym(discrete_actions=False)
     evaluator = LandingEvaluator(discrete_actions=False)
@@ -148,6 +149,7 @@ def train_landing_agent(
     training_directory = Path.cwd() / "sac"
 
     os.makedirs(training_directory, exist_ok=True)
+    eval_csv = training_directory / f"eval.csv"
 
     memory = ReplayBuffer(buffer_size=buffer_size)
     q1 = QNet(lr_q)
@@ -190,7 +192,7 @@ def train_landing_agent(
                 q1.soft_update(q1_target, tau)
                 q2.soft_update(q2_target, tau)
 
-        if episode % eval_every == 0 and episode > 0:
+        if episode % eval_freq == 0 and episode > 0:
             eval_net.fc1.load_state_dict(pi.fc1.state_dict())
             eval_net.fc_mu.load_state_dict(pi.fc_mu.state_dict())
 
@@ -207,6 +209,9 @@ def train_landing_agent(
                 highest_avg_reward = avg_reward
                 evaluator.save_flight_trajectory_plot(
                     training_directory / "best_flight_trajectories.png")
+            print("Best:", highest_avg_reward)
+
+            evaluator.append_to_csv(episode, eval_csv)
 
     return highest_avg_reward
 
@@ -232,8 +237,8 @@ def optuna_objective(trial: optuna.Trial):
     """
 
     return -train_landing_agent(
-        n_episodes=1000,
-        lr_pi=trial.suggest_float("lr_pi", 0.0001, 0.001, step=0.0002),
+        n_episodes=2000,
+        lr_pi=trial.suggest_float("lr_pi", 0.0002, 0.001, step=0.0002),
         lr_q=trial.suggest_float("lr_q", 0.0005, 0.002, step=0.0005),
         init_alpha=0.01,  # initial value of the entropy regularization coef
         gamma=trial.suggest_float(
@@ -241,20 +246,20 @@ def optuna_objective(trial: optuna.Trial):
         # number of transitions to sample for each training loop
         batch_size=trial.suggest_int("batch_size", 16, 128, step=16),
         # how many batches to train on after each episode
-        n_batches=trial.suggest_int("n_batches", 10, 50, step=10),
+        n_batches=trial.suggest_int("n_batches", 5, 50, step=5),
         buffer_size=50000,  # number of transitions to store int he replay buffer
         # for target network soft update
-        tau=trial.suggest_float("tau", 0.0001, 0.002, step=0.0001),
+        tau=trial.suggest_float("tau", 0.0001, 0.001, step=0.0001),
         target_entropy=-1.0,  # for automated alpha update
         lr_alpha=0.001,  # for automated alpha update
-        reward_scale=trial.suggest_int("reward_scale", 2, 20, step=2)
+        reward_scale=trial.suggest_int("reward_scale", 2, 52, step=5)
     )
 
 
 def find_good_hyperparams():
     storage = f"sqlite:///sac/sac_landing.db"
     study = optuna.create_study(study_name="sac_landing", storage=storage)
-    study.optimize(optuna_objective, n_trials=100)
+    study.optimize(optuna_objective, n_trials=200)
 
 
 if __name__ == '__main__':

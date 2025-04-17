@@ -35,7 +35,7 @@ class Environment:
         if map == None:
             # The default map:
             # - Open area
-            map_tiles = np.full((600, 600), MapTile.AIR, dtype=np.uint8)
+            map_tiles = np.full((400, 400), MapTile.AIR, dtype=np.uint8)
             # - Flat ground level
             for y in range(0, 10):
                 for x in range(map_tiles.shape[1]):

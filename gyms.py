@@ -22,10 +22,10 @@ class Normalization:
     ])
 
     SD = np.array([
-        50,  # delta x
-        50,  # delta y
-        5,  # velocity x
-        5,  # velocity y
+        100,  # delta x
+        100,  # delta y
+        10,  # velocity x
+        10,  # velocity y
         1,  # cos(angle)
         1,  # sin(angle)
         0.2,  # angular velocity
@@ -108,30 +108,26 @@ class SpacecraftGym(gym.Env):
         """
 
         # Probably won't exceed these values
-        max_velocity = 60
-        max_angular_velocity = 2 * np.pi
-        max_dist = 400
-
         obs_low = np.array([
-            -max_dist,  # delta x
-            -max_dist,  # delta y
-            -max_velocity,  # x velocity
-            -max_velocity,  # y velocity
+            -400,  # delta x
+            -400,  # delta y
+            -60,  # x velocity
+            -60,  # y velocity
             -1,  # cos angle
             -1,  # sin angle
-            -max_angular_velocity,  # angular velocity
+            -2 * np.pi,  # angular velocity
             self.env.MIN_THRUST_LEVEL,  # thrust level
             self.env.MIN_GIMBAL_LEVEL  # gimbal level
         ])
 
         obs_high = np.array([
-            max_dist,  # delta x
-            max_dist,  # delta y
-            max_velocity,  # x velocity
-            max_velocity,  # y velocity
+            400,  # delta x
+            400,  # delta y
+            60,  # x velocity
+            60,  # y velocity
             1,  # cos angle
             1,  # sin angle
-            max_angular_velocity,  # angular velocity
+            2 * np.pi,  # angular velocity
             self.env.MAX_THRUST_LEVEL,  # thrust level
             self.env.MAX_GIMBAL_LEVEL  # gimbal level
         ])
@@ -158,11 +154,12 @@ class LandingSpacecraftGym(SpacecraftGym):
 
     def __init__(self, discrete_actions=True):
         super().__init__(discrete_actions=discrete_actions)
+
         # Distance away from the landing area that the spacecraft spawn:
-        self.x_start = -200
-        self.x_end = 200
+        self.x_start = -150
+        self.x_end = 150
         self.y_start = 100
-        self.y_end = 500
+        self.y_end = 300
         self.landing_area = (self.env.map.width//2, 10)
         self.target_point = (
             self.landing_area[0], self.landing_area[1] + self.env.height//2)
@@ -219,7 +216,9 @@ class LandingSpacecraftGym(SpacecraftGym):
             direction_error = np.linalg.norm(
                 velocity_unit_vector - landing_area_unit_vec)
 
-            reward = 0.3-direction_error
+            # sqrt(2-2cos(pi / 24)) = 0.13, 7.5 degrees off
+            # sqrt(2-2cos(pi / 12)) = 0.261, 15 degrees off
+            reward = 0.261-direction_error
 
         info = {
             "terminated": terminated,
@@ -306,8 +305,8 @@ class LandingEvaluator:
 
     def save_flight_trajectory_plot(self, path):
         plt.clf()
-        plt.xlim((0, 600))
-        plt.ylim((0, 600))
+        plt.xlim((0, 400))
+        plt.ylim((0, 400))
         for k, v in self.results.items():
             x_s = []
             y_s = []
@@ -328,8 +327,22 @@ class LandingEvaluator:
                     self.gym.landing_area[1] + 32], s=[500], label="Landing area", zorder=-1)
         plt.xlabel("x")
         plt.ylabel("y")
+
+        #get current axes
+        ax = plt.gca()
+
+        #hide x-axis
+        ax.get_xaxis().set_visible(False)
+        ax.get_yaxis().set_visible(False)
+
         plt.legend()
         plt.savefig(path)
+
+    def append_to_csv(self, ep, csv_path):
+        with open(csv_path, "+a") as csv:
+            csv.write(
+                f"{ep},{self.get_avg_reward()},{self.get_avg_episode_length()},{self.get_num_landings()}\n"
+            )
 
     def evaluate(self, state_action_fn):
         results = {}
@@ -353,83 +366,3 @@ class LandingEvaluator:
                     done = terminated or truncated
         self.results = results
         return results
-
-
-class HoveringSpacecraftGym(SpacecraftGym):
-
-    metadata = {
-        "render_modes": ["human", "rgb_array"],
-        "render_fps": 1,
-    }
-
-    def __init__(self, env, discrete_actions=True):
-        self.hovering_point = (env.map.width//2, env.map.height//2)
-        super().__init__(env, discrete_actions=discrete_actions)
-
-    def _get_obs(self):
-        state = [
-            self.env.position[0] - self.hovering_point[0],  # delta x
-            self.env.position[1] - self.hovering_point[1],  # delta y
-            self.env.velocity[0],  # x velocity
-            self.env.velocity[1],  # y velocity
-            np.cos(self.env.angle),  # cos angle
-            np.sin(self.env.angle),  # sin angle
-            self.env.angular_velocity,  # angular velocity
-            self.env.thrust_level,  # thrust level
-            self.env.gimbal_level  # gimbal level
-        ]
-        return np.array(state, dtype=np.float64)
-
-    def step(self, action_input):
-        if self.discrete_actions:
-            action = self.discrete_action_space[action_input]
-        else:
-            action = action_input
-
-        self.env.step(action)
-
-        new_obs = self._get_obs()
-        new_obs = (new_obs - Normalization.MEAN) / Normalization.SD
-
-        flight_ended = self.env.state == self.env.STATE_ENDED
-
-        if flight_ended:
-            reward = -10000
-        else:
-            distance_penalty = self.env.get_distance_to(
-                *self.hovering_point) * 1e-1
-            velocity_penalty = self.env.get_velocity() * 1e-1
-            angle_penalty = np.fabs(self.env.angle) * 10
-            angular_velocity_penalty = np.fabs(self.env.angular_velocity) * 10
-            reward = 100 - (distance_penalty + velocity_penalty +
-                            angle_penalty + angular_velocity_penalty)
-
-        info = {}
-
-        terminated = flight_ended
-        truncated = self.env.steps >= 100
-        return new_obs, reward, terminated, truncated, info
-
-    def reset(self, seed=None, options=None):
-        self.env.reset()
-
-        # Position spacecraft at some random location near the point:
-        self.env.position = (self.hovering_point[0] + np.random.randint(-50, 50),
-                             self.hovering_point[1] + np.random.randint(-50, 50))
-
-        # With a bit of velocity, angle and angular velocity:
-        self.env.velocity = (np.random.uniform(-10, 10),
-                             np.random.uniform(-10, 10))
-        self.env.angle = np.random.uniform(-np.pi/8, np.pi/8)
-        self.env.angular_velocity = np.random.uniform(-0.2, 0.2)
-
-        # And with a random engine gimbal/thrust configuration:
-        self.env.thrust_level = np.random.randint(
-            self.env.MIN_THRUST_LEVEL, self.env.MAX_THRUST_LEVEL)
-        self.env.gimbal_level = np.random.randint(
-            self.env.MIN_GIMBAL_LEVEL, self.env.MAX_GIMBAL_LEVEL)
-
-        info = {}
-        self.env.state = self.env.STATE_FLIGHT
-        observation = self._get_obs()
-        return observation, info
