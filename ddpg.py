@@ -98,7 +98,7 @@ def train_landing_agent(
         buffer_limit=50000,
         tau=0.005,
         reward_scale=10,
-        n_episodes=5_000,
+        n_episodes=2_000,
         eval_freq=10,
 ):
     env = LandingSpacecraftGym(discrete_actions=False)
@@ -159,17 +159,17 @@ def train_landing_agent(
             print("Best:", highest_avg_reward)
 
     env.close()
+    return highest_avg_reward
 
 
 def optuna_objective(trial: optuna.Trial):
 
     return -train_landing_agent(
-        lr_mu=trial.suggest_float("lr_mu", 0.0001, 0.001, step=0.0002),
+        lr_mu=trial.suggest_float("lr_mu", 0.0002, 0.001, step=0.0002),
         lr_q=trial.suggest_float("lr_q", 0.0002, 0.001, step=0.0002),
         gamma=trial.suggest_float("gamma", 0.9, 1, step=0.01),
         batch_size=trial.suggest_int("batch_size", 32, 128, step=32),
-        buffer_limit=50000,
-        tau=trial.suggest_float("tau", 0.0001, 0.005, step=0.0005),
+        tau=trial.suggest_float("tau", 0.0005, 0.005, step=0.0005),
         reward_scale=trial.suggest_int("reward_scale", 5, 50, step=5)
     )
 
@@ -182,5 +182,5 @@ def find_good_hyperparams():
 
 
 if __name__ == '__main__':
-    train_landing_agent()
-    # find_good_hyperparams()
+    # train_landing_agent()
+    find_good_hyperparams()
