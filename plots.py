@@ -3,13 +3,17 @@ from pathlib import Path
 import numpy as np
 
 
-def moving_average_smooth(values: np.ndarray, width=100):
-    smoothed = np.zeros(values.shape)
+def moving_mean_sd(values: np.ndarray, width=50):
+    mean = np.zeros(values.shape)
+    std = np.zeros(values.shape)
 
-    for i in range(smoothed.shape[0]):
-        smoothed[i] = values[max(0, i - width//2):min(i+width//2, values.shape[0]-1)].mean()
+    for i in range(mean.shape[0]):
+        mean[i] = values[max(0, i - width//2):min(i+width //
+                                                  2, values.shape[0]-1)].mean()
+        std[i] = values[max(0, i - width//2):min(i+width //
+                                                 2, values.shape[0]-1)].std()
 
-    return smoothed
+    return mean, std
 
 
 def open_eval_csv(path):
@@ -42,14 +46,26 @@ def create_landing_plots():
     sac_csv = open_eval_csv(Path.cwd() / "sac" / "eval.csv")
 
     eps = sac_csv[:, 0]
-    idx = 3
+    idx = 1
     ppo_landings = ppo_csv[:, idx]
     ddpg_landings = ddpg_csv[:, idx]
     sac_landings = sac_csv[:, idx]
 
-    plt.plot(eps, moving_average_smooth(ppo_landings), label="PPO")
-    plt.plot(eps, moving_average_smooth(ddpg_landings), label="DDPG")
-    plt.plot(eps, moving_average_smooth(sac_landings), label="SAC")
+    ppo_mean, ppo_sd = moving_mean_sd(ppo_landings)
+    ddpg_mean, ddpg_sd = moving_mean_sd(ddpg_landings)
+    sac_mean, sac_sd = moving_mean_sd(sac_landings)
+
+    plt.plot(eps, ppo_mean, label="PPO", color="blue")
+    plt.fill_between(eps, ppo_mean - ppo_sd, ppo_mean +
+                     ppo_sd, alpha=0.05, color="blue")
+
+    plt.plot(eps, ddpg_mean, label="DDPG", color="green")
+    plt.fill_between(eps, ddpg_mean - ddpg_sd, ddpg_mean +
+                     ddpg_sd, alpha=0.05, color="green")
+
+    plt.plot(eps, sac_mean, label="SAC", color="red")
+    plt.fill_between(eps, sac_mean - sac_sd, sac_mean +
+                     sac_sd, alpha=0.05, color="red")
 
     plt.xlabel("Episode")
     plt.ylabel("# of successful landings")

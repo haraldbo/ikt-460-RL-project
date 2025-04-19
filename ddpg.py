@@ -66,7 +66,7 @@ def train(mu, mu_target, q, q_target, memory, q_optimizer, mu_optimizer, batch_s
     q_loss.backward()
     q_optimizer.step()
 
-    mu_loss = -q(s, mu(s)).mean()  # That's all for the policy loss.
+    mu_loss = -q(s, mu(s)).mean()
     mu_optimizer.zero_grad()
     mu_loss.backward()
     mu_optimizer.step()

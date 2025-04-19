@@ -1,13 +1,11 @@
 from spacecraft import Environment
-import gymnasium as gym
-from gymnasium import spaces
 import numpy as np
 from common import Settings
 import matplotlib.pyplot as plt
 
 
-# It is recommended to normalize the environment
-# https://stable-baselines.readthedocs.io/en/master/guide/rl_tips.html#tips-and-tricks-when-creating-a-custom-environment
+# "It is recommended to normalize the environment" - https://stable-baselines.readthedocs.io/en/master/guide/rl_tips.html#tips-and-tricks-when-creating-a-custom-environment
+# it makes sense since it is going to be inputted to a neural network
 class Normalization:
     MEAN = np.array([
         0,  # delta x
@@ -52,15 +50,9 @@ def create_normalized_observation(env: Environment, target_point):
     return state
 
 
-class SpacecraftGym(gym.Env):
-
-    metadata = {
-        "render_modes": ["human", "rgb_array"],
-        "render_fps": 1,
-    }
+class LandingSpacecraftGym:
 
     def __init__(self, discrete_actions=True):
-        super().__init__()
         self.env = Environment(time_step_size=Settings.TIME_STEP_SIZE)
 
         self.discrete_actions = discrete_actions
@@ -69,91 +61,6 @@ class SpacecraftGym(gym.Env):
             for thrust_action in [-1, 0, 1]:
                 self.discrete_action_space.append(
                     (gimbal_action, thrust_action))
-
-        if discrete_actions:
-            """
-            The actions:
-                - thruster: decrease, do nothing, increase 
-                - gimbal: decrease, do nothing, increase
-
-            9 in total: [-1, -1], [0, -1], ... , [1, 1] 
-            """
-            self.action_space = spaces.Discrete(
-                len(self.discrete_action_space))
-
-        else:
-            action_low = np.array([
-                -1,  # gimbal
-                -1  # thrust
-            ])
-
-            action_high = np.array([
-                1,  # gimbal
-                1  # thrust
-            ])
-            self.action_space = spaces.Box(
-                action_low, action_high, dtype=np.float64)
-
-        """
-        The observation:
-            - delta x: distance from x position to target x along the x axis
-            - delta y: distance from y position to target y along the y axis
-            - x velocity
-            - y velocity
-            - sin(angle)
-            - cos(angle)
-            - angular velocity
-            - thrust level
-            - gimbal level
-        """
-
-        # Probably won't exceed these values
-        obs_low = np.array([
-            -400,  # delta x
-            -400,  # delta y
-            -60,  # x velocity
-            -60,  # y velocity
-            -1,  # cos angle
-            -1,  # sin angle
-            -2 * np.pi,  # angular velocity
-            self.env.MIN_THRUST_LEVEL,  # thrust level
-            self.env.MIN_GIMBAL_LEVEL  # gimbal level
-        ])
-
-        obs_high = np.array([
-            400,  # delta x
-            400,  # delta y
-            60,  # x velocity
-            60,  # y velocity
-            1,  # cos angle
-            1,  # sin angle
-            2 * np.pi,  # angular velocity
-            self.env.MAX_THRUST_LEVEL,  # thrust level
-            self.env.MAX_GIMBAL_LEVEL  # gimbal level
-        ])
-
-        obs_low = (obs_low - Normalization.MEAN) / Normalization.SD
-        obs_high = (obs_high - Normalization.MEAN) / Normalization.SD
-
-        self.observation_space = spaces.Box(
-            obs_low, obs_high, dtype=np.float64)
-
-    def render(self):
-        pass
-
-    def close(self):
-        pass
-
-
-class LandingSpacecraftGym(SpacecraftGym):
-
-    metadata = {
-        "render_modes": ["human", "rgb_array"],
-        "render_fps": 1,
-    }
-
-    def __init__(self, discrete_actions=True):
-        super().__init__(discrete_actions=discrete_actions)
 
         # Distance away from the landing area that the spacecraft spawn:
         self.x_start = -150
@@ -328,10 +235,10 @@ class LandingEvaluator:
         plt.xlabel("x")
         plt.ylabel("y")
 
-        #get current axes
+        # get current axes
         ax = plt.gca()
 
-        #hide x-axis
+        # hide x-axis
         ax.get_xaxis().set_visible(False)
         ax.get_yaxis().set_visible(False)
 
