@@ -95,12 +95,12 @@ def train_landing_agent(
         lr_q=0.0008,
         gamma=0.98,
         batch_size=128,
-        buffer_limit=10_000,
+        buffer_limit=1000_000,
         tau=0.005,
         reward_scale=12,
         n_episodes=2_000,
         eval_freq=10,
-        batches_per_update=50
+        batches_per_update=100
 ):
     env = LandingSpacecraftGym(discrete_actions=False)
     evaluator = LandingEvaluator(discrete_actions=False)
@@ -159,7 +159,6 @@ def train_landing_agent(
             evaluator.append_to_csv(episode, eval_csv)
             print("Best:", highest_avg_reward)
 
-    env.close()
     return highest_avg_reward
 
 
