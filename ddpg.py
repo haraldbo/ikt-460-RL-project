@@ -91,15 +91,16 @@ class LandingAgent:
 
 
 def train_landing_agent(
-        lr_mu=0.0005,
-        lr_q=0.001,
-        gamma=0.99,
-        batch_size=32,
-        buffer_limit=50000,
+        lr_mu=0.0006,
+        lr_q=0.0008,
+        gamma=0.98,
+        batch_size=128,
+        buffer_limit=10_000,
         tau=0.005,
-        reward_scale=10,
+        reward_scale=12,
         n_episodes=2_000,
         eval_freq=10,
+        batches_per_update=50
 ):
     env = LandingSpacecraftGym(discrete_actions=False)
     evaluator = LandingEvaluator(discrete_actions=False)
@@ -135,7 +136,7 @@ def train_landing_agent(
                 break
 
         if memory.size() > 2000:
-            for i in range(10):
+            for i in range(batches_per_update):
                 train(mu, mu_target, q, q_target,
                       memory, q_optimizer, mu_optimizer,
                       batch_size, gamma)
@@ -182,5 +183,5 @@ def find_good_hyperparams():
 
 
 if __name__ == '__main__':
-    # train_landing_agent()
-    find_good_hyperparams()
+    train_landing_agent()
+    # find_good_hyperparams()
