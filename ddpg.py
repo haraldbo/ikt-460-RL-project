@@ -10,74 +10,6 @@ from common import ReplayBuffer
 import optuna
 
 
-class MuNet(nn.Module):
-    def __init__(self):
-        super(MuNet, self).__init__()
-        self.fc1 = nn.Linear(9, 128)
-        self.fc2 = nn.Linear(128, 64)
-        self.fc_mu = nn.Linear(64, 2)
-
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        mu = torch.tanh(self.fc_mu(x))
-        return mu
-
-
-class QNet(nn.Module):
-    def __init__(self):
-        super(QNet, self).__init__()
-        self.fc_s = nn.Linear(9, 64)
-        self.fc_a = nn.Linear(2, 64)
-        self.fc_q = nn.Linear(128, 32)
-        self.fc_out = nn.Linear(32, 1)
-
-    def forward(self, x, a):
-        h1 = F.relu(self.fc_s(x))
-        h2 = F.relu(self.fc_a(a))
-        cat = torch.cat([h1, h2], dim=1)
-        q = F.relu(self.fc_q(cat))
-        q = self.fc_out(q)
-        return q
-
-
-class OrnsteinUhlenbeckNoise:
-    def __init__(self, mu):
-        self.theta = 0.1
-        self.dt = 0.01
-        self.sigma = 0.1
-        self.mu = mu
-        self.x_prev = np.zeros_like(self.mu)
-
-    def __call__(self):
-        x = self.x_prev + self.theta * (self.mu - self.x_prev) * self.dt + \
-            self.sigma * np.sqrt(self.dt) * \
-            np.random.normal(size=self.mu.shape)
-        self.x_prev = x
-        return x
-
-
-def train(mu, mu_target, q, q_target, memory, q_optimizer, mu_optimizer, batch_size, gamma):
-    s, a, r, s_prime, done_mask = memory.sample(batch_size)
-
-    target = r + gamma * q_target(s_prime, mu_target(s_prime)) * done_mask
-    q_loss = F.smooth_l1_loss(q(s, a), target.detach())
-    q_optimizer.zero_grad()
-    q_loss.backward()
-    q_optimizer.step()
-
-    mu_loss = -q(s, mu(s)).mean()
-    mu_optimizer.zero_grad()
-    mu_loss.backward()
-    mu_optimizer.step()
-
-
-def soft_update(net, net_target, tau):
-    for param_target, param in zip(net_target.parameters(), net.parameters()):
-        param_target.data.copy_(
-            param_target.data * (1.0 - tau) + param.data * tau)
-
-
 class LandingAgent:
 
     def __init__(self):
@@ -90,10 +22,60 @@ class LandingAgent:
         return self.pi(torch.from_numpy(obs).float()).detach().numpy()
 
 
+class MuNet(nn.Module):
+    def __init__(self):
+        super(MuNet, self).__init__()
+        self.net = nn.Sequential(
+            nn.Linear(9, 128),
+            nn.ReLU(),
+            nn.Linear(128, 2),
+            nn.Tanh()
+        )
+
+    def forward(self, state):
+        return self.net(state)
+
+
+class QNet(nn.Module):
+    def __init__(self):
+        super(QNet, self).__init__()
+        self.net = nn.Sequential(
+            nn.Linear(11,  256),  # 9 state vars and 2 action vars
+            nn.ReLU(),
+            nn.Linear(256, 256),
+            nn.ReLU(),
+            nn.Linear(256, 1),
+        )
+
+    def forward(self, state, action):
+        return self.net(torch.cat([state, action], dim=1))
+
+
+def train(mu, mu_target, q, q_target, memory: ReplayBuffer, q_optimizer, mu_optimizer, batch_size, gamma):
+    state, action, reward, next_state, dones = memory.create_batch(batch_size)
+
+    target = reward + gamma * q_target(next_state, mu_target(next_state)) * dones
+    q_loss = F.smooth_l1_loss(q(state, action), target.detach())
+    q_optimizer.zero_grad()
+    q_loss.backward()
+    q_optimizer.step()
+
+    mu_loss = -q(state, mu(state)).mean()
+    mu_optimizer.zero_grad()
+    mu_loss.backward()
+    mu_optimizer.step()
+
+
+def soft_update(net, net_target, tau):
+    for param_target, param in zip(net_target.parameters(), net.parameters()):
+        param_target.data.copy_(
+            param_target.data * (1.0 - tau) + param.data * tau)
+
+
 def train_landing_agent(
         lr_mu=0.0006,
         lr_q=0.0008,
-        gamma=0.98,
+        gamma=0.99,
         batch_size=128,
         buffer_limit=1_000_000,
         tau=0.005,
@@ -117,21 +99,20 @@ def train_landing_agent(
     mu_optimizer = optim.Adam(mu.parameters(), lr=lr_mu)
     q_optimizer = optim.Adam(q.parameters(), lr=lr_q)
 
-    # "to generate temporally correlated exploration for exploration efficiency in physical control problems with inertia" - https://arxiv.org/pdf/1509.02971
-    ou_noise = OrnsteinUhlenbeckNoise(mu=np.zeros(2))
-
     highest_avg_reward = -float("inf")
 
     for episode in range(n_episodes):
-        s, _ = env.reset()
+        state, _ = env.reset()
         done = False
 
         while not done:
-            a = mu(torch.from_numpy(s).float())
-            a = np.clip(a.detach().numpy() + ou_noise(), -1, 1)
-            s_prime, r, done, truncated, info = env.step(a)
-            memory.add_transition((s, a, r/reward_scale, s_prime, done))
-            s = s_prime
+            action = mu(torch.from_numpy(state).float())
+            action = np.clip(action.detach().numpy() +
+                             np.random.normal(loc=0, size=2, scale=0.1), -1, 1)
+            next_state, r, done, truncated, _ = env.step(action)
+            memory.add_transition(
+                (state, action, r/reward_scale, next_state, done))
+            state = next_state
             if truncated:
                 break
 
