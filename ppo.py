@@ -116,7 +116,7 @@ class PPO(nn.Module):
 
 
 def train_landing_agent(learning_rate=0.0005,
-                        n_episodes=5_000,
+                        n_episodes=3_000,
                         gamma=0.99,
                         lmbda=0.95,
                         eps_clip=0.1,

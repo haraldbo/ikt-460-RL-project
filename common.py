@@ -20,26 +20,25 @@ class ReplayBuffer():
     def add_transition(self, transition):
         self.buffer.append(transition)
 
-    def sample(self, n):
-        mini_batch = random.sample(self.buffer, n)
-        s_lst, a_lst, r_lst, s_prime_lst, done_mask_lst = [], [], [], [], []
+    def create_batch(self, n):
+        sample = random.sample(self.buffer, n)
+        states = []
+        actions = []
+        rewards = []
+        next_states = []
+        dones = []
 
-        for transition in mini_batch:
+        for transition in sample:
             s, a, r, s_prime, done = transition
-            s_lst.append(s)
-            a_lst.append(a)
-            r_lst.append([r])
-            s_prime_lst.append(s_prime)
-            done_mask = 0.0 if done else 1.0
-            done_mask_lst.append([done_mask])
+            states.append(s)
+            actions.append(a)
+            rewards.append([r])
+            next_states.append(s_prime)
+            dones.append([0.0 if done else 1.0])
 
-        s_lst = np.array(s_lst)
-        s_prime_lst = np.array(s_prime_lst)
-        a_lst = np.array(a_lst)
-
-        return torch.tensor(s_lst, dtype=torch.float), torch.tensor(a_lst, dtype=torch.float), \
-            torch.tensor(r_lst, dtype=torch.float), torch.tensor(s_prime_lst, dtype=torch.float), \
-            torch.tensor(done_mask_lst, dtype=torch.float)
+        return torch.tensor(np.array(states), dtype=torch.float), torch.tensor(np.array(actions), dtype=torch.float), \
+            torch.tensor(np.array(rewards), dtype=torch.float), torch.tensor(np.array(next_states), dtype=torch.float), \
+            torch.tensor(dones, dtype=torch.float)
 
     def size(self):
         return len(self.buffer)

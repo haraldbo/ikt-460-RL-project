@@ -46,7 +46,8 @@ class PolicyTrainingNet(nn.Module):
         q1_q2 = torch.cat([q1_val, q2_val], dim=1)
         min_q = torch.min(q1_q2, 1, keepdim=True)[0]
 
-        loss = -min_q - entropy  # for gradient ascent
+        # policy gradient ascent:
+        loss = -min_q - entropy
         self.optimizer.zero_grad()
         loss.mean().backward()
         self.optimizer.step()
@@ -100,8 +101,8 @@ class QNet(nn.Module):
         return q
 
     def train_net(self, target, mini_batch):
-        s, a, r, s_prime, done = mini_batch
-        loss = F.smooth_l1_loss(self.forward(s, a), target)
+        state, action, _, _, _ = mini_batch
+        loss = F.smooth_l1_loss(self.forward(state, action), target)
         self.optimizer.zero_grad()
         loss.mean().backward()
         self.optimizer.step()
@@ -113,35 +114,35 @@ class QNet(nn.Module):
 
 
 def calc_target(pi, q1, q2, mini_batch, gamma):
-    s, a, r, s_prime, done = mini_batch
+    _, _, reward, next_state, done = mini_batch
 
     with torch.no_grad():
-        a_prime, log_prob = pi(s_prime)
+        a_prime, log_prob = pi(next_state)
         # summing the log probs. It should be the same as multiplying together the probs?
-        # Assuming thrust and gimbaling are indepent, but they mat not be.. Hmm
+        # Assuming thrust and gimbaling are indepent, but not sure
         entropy = -pi.log_alpha.exp() * log_prob.sum(1, keepdim=True)
-        q1_val, q2_val = q1(s_prime, a_prime), q2(s_prime, a_prime)
+        q1_val, q2_val = q1(next_state, a_prime), q2(next_state, a_prime)
         q1_q2 = torch.cat([q1_val, q2_val], dim=1)
         min_q = torch.min(q1_q2, 1, keepdim=True)[0]
-        target = r + gamma * done * (min_q + entropy)
+        target = reward + gamma * done * (min_q + entropy)
 
     return target
 
 
 def train_landing_agent(
-        n_episodes=5000,
+        n_episodes=3000,
         lr_pi=0.0005,
         lr_q=0.001,
         init_alpha=0.01,  # initial value of the entropy regularization coef
-        gamma=0.98,  # discount factor
-        batch_size=32,  # number of transitions to sample for each training loop
-        n_batches=20,  # how many batches to train on after each episode
-        buffer_size=50000,  # number of transitions to store int he replay buffer
-        tau=0.01,  # for target network soft update
+        gamma=0.99,  # discount factor
+        batch_size=96,  # number of transitions to sample for each training loop
+        n_batches=50,  # how many batches to train on after each episode
+        buffer_size=1_000_000,  # number of transitions to store int he replay buffer
+        tau=0.001,  # for target network soft update
         target_entropy=-1.0,  # for automated alpha update
         lr_alpha=0.001,  # for automated alpha update
         reward_scale=15.0,
-        eval_freq=10
+        eval_freq=1
 ):
     env = LandingSpacecraftGym(discrete_actions=False)
     evaluator = LandingEvaluator(discrete_actions=False)
@@ -151,11 +152,15 @@ def train_landing_agent(
     os.makedirs(training_directory, exist_ok=True)
     eval_csv = training_directory / f"eval.csv"
 
-    memory = ReplayBuffer(buffer_size=buffer_size)
+    replay_buffer = ReplayBuffer(buffer_size=buffer_size)
     q1 = QNet(lr_q)
     q2 = QNet(lr_q)
     q1_target = QNet(lr_q)
     q2_target = QNet(lr_q)
+
+    q1_target.load_state_dict(q1.state_dict())
+    q2_target.load_state_dict(q2.state_dict())
+
     pi = PolicyTrainingNet(
         learning_rate=lr_pi,
         init_alpha=init_alpha,
@@ -163,32 +168,29 @@ def train_landing_agent(
         target_entropy=target_entropy
     )
 
-    q1_target.load_state_dict(q1.state_dict())
-    q2_target.load_state_dict(q2.state_dict())
-
     highest_avg_reward = -float('inf')
 
     for episode in range(n_episodes):
-        s, _ = env.reset()
+        state, _ = env.reset()
         done = False
 
         while not done:
-            a, log_prob = pi(torch.from_numpy(s).float())
-            a = a.detach().numpy()
-            s_prime, r, done, truncated, info = env.step(a)
-            memory.add_transition((s, a, r/reward_scale, s_prime, done))
-            s = s_prime
+            action, _ = pi(torch.from_numpy(state).float())
+            action = action.detach().numpy()
+            next_state, reward, done, truncated, info = env.step(action)
+            replay_buffer.add_transition(
+                (state, action, reward/reward_scale, next_state, done))
+            state = next_state
             if truncated:
                 break
 
-        if memory.size() > 1000:
+        if replay_buffer.size() > 1000:
             for i in range(n_batches):
-                mini_batch = memory.sample(batch_size)
-                td_target = calc_target(
-                    pi, q1_target, q2_target, mini_batch, gamma)
-                q1.train_net(td_target, mini_batch)
-                q2.train_net(td_target, mini_batch)
-                pi.train_net(q1, q2, mini_batch)
+                batch = replay_buffer.create_batch(batch_size)
+                td_target = calc_target(pi, q1_target, q2_target, batch, gamma)
+                q1.train_net(td_target, batch)
+                q2.train_net(td_target, batch)
+                pi.train_net(q1, q2, batch)
                 q1.soft_update(q1_target, tau)
                 q2.soft_update(q2_target, tau)
 
