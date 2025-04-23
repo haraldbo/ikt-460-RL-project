@@ -25,10 +25,10 @@ class PolicyTrainingNet(nn.Module):
         self.log_alpha.requires_grad = True
         self.log_alpha_optimizer = optim.Adam([self.log_alpha], lr=lr_alpha)
 
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        mu = self.fc_mu(x)
-        std = F.softplus(self.fc_std(x))
+    def forward(self, state):
+        state = F.relu(self.fc1(state))
+        mu = self.fc_mu(state)
+        std = F.softplus(self.fc_std(state))
         dist = Normal(mu, std)
         action = dist.rsample()
         log_prob = dist.log_prob(action)
@@ -129,7 +129,7 @@ def calc_td_target(pi: PolicyTrainingNet, q1_target: QNet, q2_target: QNet, batc
 
 
 def train_landing_agent(
-        n_episodes=3000,
+        n_episodes=4000,
         lr_pi=0.0005,
         lr_q=0.001,
         init_alpha=0.01,  # initial value of the entropy regularization coef
@@ -204,7 +204,7 @@ def train_landing_agent(
             print("Episode", episode)
             evaluator.print_results()
             evaluator.save_flight_trajectory_plot(
-                training_directory / "latest_flight_trajectories.png")
+                training_directory / "trajectories" / f"{episode:05}.png")
             avg_reward = evaluator.get_avg_reward()
             if avg_reward > highest_avg_reward:
                 torch.save(eval_net.state_dict(),

@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 
 
-def moving_mean_sd(values: np.ndarray, width=50):
+def moving_mean_sd(values: np.ndarray, width=200):
     mean = np.zeros(values.shape)
     std = np.zeros(values.shape)
 
@@ -47,25 +47,28 @@ def create_landing_plots():
 
     eps = sac_csv[:, 0]
     idx = 1
-    ppo_landings = ppo_csv[:, idx]
-    ddpg_landings = ddpg_csv[:, idx]
-    sac_landings = sac_csv[:, idx]
+    ppo = ppo_csv[:, idx]
+    ddpg = ddpg_csv[:, idx]
+    sac = sac_csv[:, idx]
 
-    ppo_mean, ppo_sd = moving_mean_sd(ppo_landings)
-    ddpg_mean, ddpg_sd = moving_mean_sd(ddpg_landings)
-    sac_mean, sac_sd = moving_mean_sd(sac_landings)
+    ppo_mean, ppo_sd = moving_mean_sd(ppo)
+    ddpg_mean, ddpg_sd = moving_mean_sd(ddpg)
+    sac_mean, sac_sd = moving_mean_sd(sac)
 
     plt.plot(eps, ppo_mean, label="PPO", color="blue")
-    plt.fill_between(eps, ppo_mean - ppo_sd, ppo_mean +
-                     ppo_sd, alpha=0.05, color="blue")
+    plt.plot(eps, ppo, color="blue", alpha=0.3)
+    ppo_max = np.argmax(ppo)
+    plt.scatter([ppo_max], [ppo[ppo_max]], marker="*", color="blue")
 
     plt.plot(eps, ddpg_mean, label="DDPG", color="green")
-    plt.fill_between(eps, ddpg_mean - ddpg_sd, ddpg_mean +
-                     ddpg_sd, alpha=0.05, color="green")
+    plt.plot(eps, ddpg, color="green", alpha=0.3)
+    ddpg_max = np.argmax(ddpg)
+    plt.scatter([ddpg_max], [ddpg[ddpg_max]], marker="*", color="green")
 
     plt.plot(eps, sac_mean, label="SAC", color="red")
-    plt.fill_between(eps, sac_mean - sac_sd, sac_mean +
-                     sac_sd, alpha=0.05, color="red")
+    plt.plot(eps, sac, color="red", alpha=0.3)
+    sac_max = np.argmax(sac)
+    plt.scatter([sac_max], [sac[sac_max]], marker="*", color="red")
 
     plt.xlabel("Episode")
     plt.ylabel("# of successful landings")

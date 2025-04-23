@@ -77,12 +77,12 @@ def train_landing_agent(
         lr_mu=0.0006,
         lr_q=0.0008,
         gamma=0.99,
-        batch_size=128,
+        batch_size=96,
         buffer_limit=1_000_000,
         tau=0.005,
         reward_scale=12,
-        n_episodes=2_000,
-        eval_freq=10,
+        n_episodes=4_000,
+        eval_freq=1,
         n_batches=50
 ):
     env = LandingSpacecraftGym(discrete_actions=False)
@@ -92,7 +92,8 @@ def train_landing_agent(
     os.makedirs(training_directory, exist_ok=True)
     memory = ReplayBuffer(buffer_limit)
 
-    q, q_target = QNet(), QNet()
+    q = QNet()
+    q_target = QNet()
     q_target.load_state_dict(q.state_dict())
     mu, mu_target = MuNet(), MuNet()
     mu_target.load_state_dict(mu.state_dict())
@@ -131,7 +132,7 @@ def train_landing_agent(
             print("Episode", episode)
             evaluator.print_results()
             evaluator.save_flight_trajectory_plot(
-                training_directory / "latest_flight_trajectories.png")
+                training_directory / "trajectories" / f"{episode:05}.png")
             avg_reward = evaluator.get_avg_reward()
             if avg_reward > highest_avg_reward:
                 torch.save(mu.state_dict(), training_directory / "landing.pt")

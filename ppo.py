@@ -14,7 +14,8 @@ class LandingAgent:
 
     def __init__(self):
         self.ppo = PPO()
-        self.ppo.load(Path.cwd() / "ppo" / "landing.pt")
+        self.ppo.load_state_dict(torch.load(
+            Path.cwd() / "ppo" / "landing.pt", weights_only=True))
         self.action_space = LandingSpacecraftGym().discrete_action_space
 
     def get_action(self, env, target):
@@ -66,9 +67,9 @@ class PPO(nn.Module):
         )
 
         self.policy_net = nn.Sequential(
-            nn.Linear(9, 256),  # 9 observation inputs
+            nn.Linear(9, 128),  # 9 observation inputs
             nn.ReLU(),
-            nn.Linear(256, 9)  # 9 action
+            nn.Linear(128, 9)  # 9 action
         )
 
     def pi(self, state):
@@ -76,9 +77,6 @@ class PPO(nn.Module):
 
     def value(self, state):
         return self.value_net(state)
-
-    def load(self, path):
-        self.load_state_dict(torch.load(path, weights_only=True))
 
 
 def train_network(ppo: PPO,
@@ -125,14 +123,14 @@ def train_landing_agent(learning_rate=0.0005,
                         gamma=0.98,
                         lmbda=0.90,
                         eps_clip=0.2,
-                        K_epoch=3,
-                        T_horizon=500,
-                        eval_freq=10,
+                        K_epoch=10,
+                        T_horizon=600,
+                        eval_freq=1,
                         verbose=True,
                         reward_scale=20,
                         # alpha to linearly decrease clipping
                         alpha_start=1,
-                        alpha_end=0.1,
+                        alpha_end=0.25,
                         alpha_episodes=3_000
                         ):
 
@@ -149,10 +147,10 @@ def train_landing_agent(learning_rate=0.0005,
 
     for episode in range(n_episodes):
         # alpha = (n_episodes - episode)/n_episodes
-        alpha = alpha_start + episode * \
-            (alpha_end - alpha_start)/alpha_episodes
-        alpha = max(alpha, alpha_end)
-
+        # alpha = alpha_start + episode * \
+        #     (alpha_end - alpha_start)/alpha_episodes
+        # alpha = max(alpha, alpha_end)
+        alpha = 1
         state, _ = env.reset()
         episode_done = False
         while not episode_done:
@@ -196,7 +194,7 @@ def train_landing_agent(learning_rate=0.0005,
                 evaluator.print_results()
 
             evaluator.save_flight_trajectory_plot(
-                training_directory / "latest_flight_trajectories.png")
+                training_directory / "trajectories" / f"{episode:05}.png")
 
             if avg_reward > highest_avg_reward:
                 evaluator.save_flight_trajectory_plot(

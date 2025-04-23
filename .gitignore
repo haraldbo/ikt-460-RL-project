@@ -4,3 +4,6 @@
 /saves
 /ppo_lander_checkpoints
 /tmp
+/ddpg/trajectories
+/ppo/trajectories
+/sac/trajectories
