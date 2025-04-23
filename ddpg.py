@@ -54,7 +54,8 @@ class QNet(nn.Module):
 def train(mu, mu_target, q, q_target, memory: ReplayBuffer, q_optimizer, mu_optimizer, batch_size, gamma):
     state, action, reward, next_state, dones = memory.create_batch(batch_size)
 
-    target = reward + gamma * q_target(next_state, mu_target(next_state)) * dones
+    target = reward + gamma * \
+        q_target(next_state, mu_target(next_state)) * dones
     q_loss = F.smooth_l1_loss(q(state, action), target.detach())
     q_optimizer.zero_grad()
     q_loss.backward()
@@ -116,7 +117,7 @@ def train_landing_agent(
             if truncated:
                 break
 
-        if memory.size() > 2000:
+        if memory.size() > 1000:
             for i in range(n_batches):
                 train(mu, mu_target, q, q_target,
                       memory, q_optimizer, mu_optimizer,

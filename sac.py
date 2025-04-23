@@ -38,15 +38,13 @@ class PolicyTrainingNet(nn.Module):
         return real_action, real_log_prob
 
     def train_net(self, q1, q2, mini_batch):
-        s, _, _, _, _ = mini_batch
-        a, log_prob = self.forward(s)
+        state, _, _, _, _ = mini_batch
+        action, log_prob = self.forward(state)
         entropy = -self.log_alpha.exp() * log_prob
 
-        q1_val, q2_val = q1(s, a), q2(s, a)
-        q1_q2 = torch.cat([q1_val, q2_val], dim=1)
+        q1_q2 = torch.cat([q1(state, action), q2(state, action)], dim=1)
         min_q = torch.min(q1_q2, 1, keepdim=True)[0]
 
-        # policy gradient ascent:
         loss = -min_q - entropy
         self.optimizer.zero_grad()
         loss.mean().backward()
@@ -65,10 +63,10 @@ class PolicyNet(nn.Module):
         self.fc1 = nn.Linear(9, 128)
         self.fc_mu = nn.Linear(128, 2)
 
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        mu = self.fc_mu(x)
-        return torch.tanh(mu)
+    def forward(self, state):
+        state = F.relu(self.fc1(state))
+        action = self.fc_mu(state)
+        return torch.tanh(action)
 
 
 class LandingAgent:
@@ -86,42 +84,43 @@ class LandingAgent:
 class QNet(nn.Module):
     def __init__(self, learning_rate):
         super(QNet, self).__init__()
-        self.fc_s = nn.Linear(9, 64)
-        self.fc_a = nn.Linear(2, 64)
-        self.fc_cat = nn.Linear(128, 32)
-        self.fc_out = nn.Linear(32, 1)
+        self.net = nn.Sequential(
+            nn.Linear(11,  256),  # 9 state vars + 2 action vars
+            nn.ReLU(),
+            nn.Linear(256, 256),
+            nn.ReLU(),
+            nn.Linear(256, 1),
+        )
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
 
-    def forward(self, x, a):
-        h1 = F.relu(self.fc_s(x))
-        h2 = F.relu(self.fc_a(a))
-        cat = torch.cat([h1, h2], dim=1)
-        q = F.relu(self.fc_cat(cat))
-        q = self.fc_out(q)
-        return q
-
-    def train_net(self, target, mini_batch):
-        state, action, _, _, _ = mini_batch
-        loss = F.smooth_l1_loss(self.forward(state, action), target)
-        self.optimizer.zero_grad()
-        loss.mean().backward()
-        self.optimizer.step()
-
-    def soft_update(self, net_target, tau):
-        for param_target, param in zip(net_target.parameters(), self.parameters()):
-            param_target.data.copy_(
-                param_target.data * (1.0 - tau) + param.data * tau)
+    def forward(self, state, action):
+        return self.net(torch.cat([state, action], dim=1))
 
 
-def calc_target(pi, q1, q2, mini_batch, gamma):
-    _, _, reward, next_state, done = mini_batch
+def train_q_net(q_net: QNet, optimizer: torch.optim.Optimizer, target, batch):
+    state, action, _, _, _ = batch
+    loss = F.smooth_l1_loss(q_net(state, action), target)
+    optimizer.zero_grad()
+    loss.mean().backward()
+    optimizer.step()
+
+
+def soft_update(net: nn.Module, net_target: nn.Module, tau):
+    for param_target, param in zip(net_target.parameters(), net.parameters()):
+        param_target.data.copy_(
+            param_target.data * (1.0 - tau) + param.data * tau)
+
+
+def calc_td_target(pi: PolicyTrainingNet, q1_target: QNet, q2_target: QNet, batch, gamma):
+    _, _, reward, next_state, done = batch
 
     with torch.no_grad():
-        a_prime, log_prob = pi(next_state)
+        next_action, log_prob = pi(next_state)
         # summing the log probs. It should be the same as multiplying together the probs?
         # Assuming thrust and gimbaling are indepent, but not sure
         entropy = -pi.log_alpha.exp() * log_prob.sum(1, keepdim=True)
-        q1_val, q2_val = q1(next_state, a_prime), q2(next_state, a_prime)
+        q1_val, q2_val = q1_target(next_state, next_action), q2_target(
+            next_state, next_action)
         q1_q2 = torch.cat([q1_val, q2_val], dim=1)
         min_q = torch.min(q1_q2, 1, keepdim=True)[0]
         target = reward + gamma * done * (min_q + entropy)
@@ -152,12 +151,13 @@ def train_landing_agent(
     os.makedirs(training_directory, exist_ok=True)
     eval_csv = training_directory / f"eval.csv"
 
-    replay_buffer = ReplayBuffer(buffer_size=buffer_size)
+    transition_buffer = ReplayBuffer(buffer_size=buffer_size)
     q1 = QNet(lr_q)
     q2 = QNet(lr_q)
+    q1_optimizer = optim.Adam(q1.parameters(), lr=lr_q)
+    q2_optimizer = optim.Adam(q2.parameters(), lr=lr_q)
     q1_target = QNet(lr_q)
     q2_target = QNet(lr_q)
-
     q1_target.load_state_dict(q1.state_dict())
     q2_target.load_state_dict(q2.state_dict())
 
@@ -177,22 +177,23 @@ def train_landing_agent(
         while not done:
             action, _ = pi(torch.from_numpy(state).float())
             action = action.detach().numpy()
-            next_state, reward, done, truncated, info = env.step(action)
-            replay_buffer.add_transition(
+            next_state, reward, done, truncated, _ = env.step(action)
+            transition_buffer.add_transition(
                 (state, action, reward/reward_scale, next_state, done))
             state = next_state
             if truncated:
                 break
 
-        if replay_buffer.size() > 1000:
+        if transition_buffer.size() > 1000:
             for i in range(n_batches):
-                batch = replay_buffer.create_batch(batch_size)
-                td_target = calc_target(pi, q1_target, q2_target, batch, gamma)
-                q1.train_net(td_target, batch)
-                q2.train_net(td_target, batch)
+                batch = transition_buffer.create_batch(batch_size)
+                td_target = calc_td_target(
+                    pi, q1_target, q2_target, batch, gamma)
+                train_q_net(q1, q1_optimizer, td_target, batch)
+                train_q_net(q2, q2_optimizer, td_target, batch)
                 pi.train_net(q1, q2, batch)
-                q1.soft_update(q1_target, tau)
-                q2.soft_update(q2_target, tau)
+                soft_update(q1, q1_target, tau)
+                soft_update(q2, q2_target, tau)
 
         if episode % eval_freq == 0 and episode > 0:
             eval_net.fc1.load_state_dict(pi.fc1.state_dict())
