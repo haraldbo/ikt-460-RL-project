@@ -27,24 +27,27 @@ class TransitionBuffer:
         self.data = []
 
     def create_batch(self):
-        s_lst, a_lst, r_lst, s_prime_lst, prob_a_lst, done_lst = [], [], [], [], [], []
+        states = []
+        actions = []
+        rewards = []
+        next_states = []
+        action_probabilities = []
+        dones = []
+
         for transition in self.data:
-            s, a, r, s_prime, prob_a, done = transition
+            state, action, reward, next_state, action_prob, done = transition
 
-            s_lst.append(s)
-            a_lst.append([a])
-            r_lst.append([r])
-            s_prime_lst.append(s_prime)
-            prob_a_lst.append([prob_a])
-            done_mask = 0 if done else 1
-            done_lst.append([done_mask])
+            states.append(state)
+            actions.append([action])
+            rewards.append([reward])
+            next_states.append(next_state)
+            action_probabilities.append([action_prob])
+            dones.append([1 if done else 0])
 
-        s, a, r, s_prime, done_mask, prob_a = torch.tensor(np.array(s_lst), dtype=torch.float), torch.tensor(np.array(a_lst), dtype=int), \
-            torch.tensor(np.array(r_lst)), torch.tensor(np.array(s_prime_lst), dtype=torch.float), \
-            torch.tensor(np.array(done_lst), dtype=torch.float), torch.tensor(
-                np.array(prob_a_lst))
-        self.data = []
-        return s, a, r, s_prime, done_mask, prob_a
+        return torch.tensor(np.array(states), dtype=torch.float), torch.tensor(np.array(actions), dtype=int), \
+            torch.tensor(np.array(rewards)), torch.tensor(np.array(next_states), dtype=torch.float), \
+            torch.tensor(np.array(dones), dtype=torch.float), torch.tensor(
+                np.array(action_probabilities))
 
     def add_transition(self, transition):
         self.data.append(transition)
@@ -56,75 +59,81 @@ class TransitionBuffer:
 class PPO(nn.Module):
     def __init__(self):
         super(PPO, self).__init__()
-        self.data = []
+        self.value_net = nn.Sequential(
+            nn.Linear(9, 256),
+            nn.ReLU(),
+            nn.Linear(256, 1)
+        )
 
-        self.fc1 = nn.Linear(9, 256)
-        self.fc_pi = nn.Linear(256, 9)
-        self.fc_v = nn.Linear(256, 1)
+        self.policy_net = nn.Sequential(
+            nn.Linear(9, 256),  # 9 observation inputs
+            nn.ReLU(),
+            nn.Linear(256, 9)  # 9 action
+        )
 
-    def pi(self, x, softmax_dim=0):
-        x = F.relu(self.fc1(x))
-        x = self.fc_pi(x)
-        prob = F.softmax(x, dim=softmax_dim)
-        return prob
+    def pi(self, state):
+        return self.policy_net(state).softmax(0 if len(state.shape) == 1 else 1)
 
-    def v(self, x):
-        x = F.relu(self.fc1(x))
-        v = self.fc_v(x)
-        return v
+    def value(self, state):
+        return self.value_net(state)
 
     def load(self, path):
         self.load_state_dict(torch.load(path, weights_only=True))
 
-    def train_network(self,
-                      transition_buffer: TransitionBuffer,
-                      optimizer: torch.optim.Optimizer,
-                      gamma,  # discount rate
-                      lmbda,
-                      eps_clip,  # clipping rate
-                      K_epoch  # how many epochs to run for each batch
-                      ):
-        # Train on batch of transitions from the transition buffer
-        s, a, r, s_prime, done_mask, prob_a = transition_buffer.create_batch()
 
-        for i in range(K_epoch):
-            td_target = r + gamma * self.v(s_prime) * done_mask
-            delta = td_target - self.v(s)
-            delta = delta.detach().numpy()
+def train_network(ppo: PPO,
+                  transition_buffer: TransitionBuffer,
+                  optimizer: torch.optim.Optimizer,
+                  gamma,  # discount rate
+                  lmbda,
+                  eps_clip,  # clipping rate
+                  K_epoch  # how many epochs to run for each batch
+                  ):
 
-            advantage_lst = []
-            advantage = 0.0
-            for delta_t in delta[::-1]:
-                advantage = gamma * lmbda * advantage + delta_t[0]
-                advantage_lst.append([advantage])
-            advantage_lst.reverse()
-            advantage = torch.tensor(advantage_lst, dtype=torch.float)
+    state, action, reward, next_state, dones, action_prob = transition_buffer.create_batch()
 
-            pi = self.pi(s, softmax_dim=1)
-            pi_a = pi.gather(1, a)
-            # a/b == exp(log(a)-log(b))
-            ratio = torch.exp(torch.log(pi_a) - torch.log(prob_a))
+    for i in range(K_epoch):
+        td_target = reward + gamma * ppo.value(next_state) * (1 - dones)
+        delta = td_target - ppo.value(state)
+        delta = delta.detach().numpy()
 
-            surr1 = ratio * advantage
-            surr2 = torch.clamp(ratio, 1-eps_clip, 1+eps_clip) * advantage
-            loss = -torch.min(surr1, surr2) + \
-                F.smooth_l1_loss(self.v(s), td_target.detach())
+        advantage_lst = []
+        advantage = 0.0
+        for delta_t in delta[::-1]:
+            advantage = gamma * lmbda * advantage + delta_t[0]
+            advantage_lst.append([advantage])
+        advantage_lst.reverse()
+        advantage = torch.tensor(advantage_lst, dtype=torch.float)
 
-            optimizer.zero_grad()
-            loss.mean().backward()
-            optimizer.step()
+        pi = ppo.pi(state)
+        pi_a = pi.gather(1, action)
+
+        ratio = torch.exp(torch.log(pi_a) - torch.log(action_prob))
+
+        surr1 = ratio * advantage
+        surr2 = torch.clamp(ratio, 1-eps_clip, 1+eps_clip) * advantage
+        loss = -torch.min(surr1, surr2) + \
+            F.smooth_l1_loss(ppo.value(state), td_target.detach())
+
+        optimizer.zero_grad()
+        loss.mean().backward()
+        optimizer.step()
 
 
 def train_landing_agent(learning_rate=0.0005,
-                        n_episodes=3_000,
-                        gamma=0.99,
-                        lmbda=0.95,
-                        eps_clip=0.1,
+                        n_episodes=4_000,
+                        gamma=0.98,
+                        lmbda=0.90,
+                        eps_clip=0.2,
                         K_epoch=3,
-                        T_horizon=200,
+                        T_horizon=500,
                         eval_freq=10,
                         verbose=True,
-                        reward_scale=100,
+                        reward_scale=20,
+                        # alpha to linearly decrease clipping
+                        alpha_start=1,
+                        alpha_end=0.1,
+                        alpha_episodes=3_000
                         ):
 
     env = LandingSpacecraftGym()
@@ -139,26 +148,33 @@ def train_landing_agent(learning_rate=0.0005,
     eval_csv = training_directory / f"eval.csv"
 
     for episode in range(n_episodes):
-        alpha = (n_episodes - episode)/n_episodes
-        s, _ = env.reset()
+        # alpha = (n_episodes - episode)/n_episodes
+        alpha = alpha_start + episode * \
+            (alpha_end - alpha_start)/alpha_episodes
+        alpha = max(alpha, alpha_end)
+
+        state, _ = env.reset()
         episode_done = False
         while not episode_done:
             for t in range(T_horizon):
-                prob = ppo.pi(torch.from_numpy(s).float())
+                prob = ppo.pi(torch.from_numpy(state).float())
+
                 m = Categorical(prob)
-                a = m.sample().item()
-                s_prime, r, terminated, truncated, info = env.step(a)
+                action = m.sample().item()
+                next_state, reward, terminated, truncated, _ = env.step(
+                    action)
 
                 transition_buffer.add_transition(
-                    (s, a, r/reward_scale, s_prime, prob[a].item(), terminated))
+                    (state, action, reward/reward_scale, next_state, prob[action].item(), terminated))
 
-                s = s_prime
+                state = next_state
 
                 if terminated or truncated:
                     episode_done = True
                     break
 
-            ppo.train_network(
+            train_network(
+                ppo,
                 transition_buffer=transition_buffer,
                 optimizer=optimizer,
                 gamma=gamma,
@@ -176,6 +192,7 @@ def train_landing_agent(learning_rate=0.0005,
 
             if verbose:
                 print("Episode", episode)
+                print("Alpha:", alpha)
                 evaluator.print_results()
 
             evaluator.save_flight_trajectory_plot(

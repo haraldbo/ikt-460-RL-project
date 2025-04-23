@@ -243,6 +243,7 @@ class LandingEvaluator:
         ax.get_yaxis().set_visible(False)
 
         plt.legend()
+        plt.tight_layout()
         plt.savefig(path)
 
     def append_to_csv(self, ep, csv_path):
