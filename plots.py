@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 
 
-def moving_mean_sd(values: np.ndarray, width=200):
+def moving_mean_sd(values: np.ndarray, width=100):
     mean = np.zeros(values.shape)
     std = np.zeros(values.shape)
 
@@ -41,39 +41,64 @@ def create_reward_plots():
 
 
 def create_landing_plots():
-    ppo_csv = open_eval_csv(Path.cwd() / "ppo" / "eval.csv")
-    ddpg_csv = open_eval_csv(Path.cwd() / "ddpg" / "eval.csv")
-    sac_csv = open_eval_csv(Path.cwd() / "sac" / "eval.csv")
+    ppo_csv = open_eval_csv(Path.cwd() / "report" / "ppo" / "eval.csv")
+    ddpg_csv = open_eval_csv(Path.cwd() / "report" / "ddpg" / "eval.csv")
+    sac_csv = open_eval_csv(Path.cwd() / "report" / "sac" / "eval.csv")
 
-    eps = sac_csv[:, 0]
-    idx = 1
-    ppo = ppo_csv[:, idx]
-    ddpg = ddpg_csv[:, idx]
-    sac = sac_csv[:, idx]
+    n_episodes = 3999
+
+    eps = sac_csv[:n_episodes, 0]
+
+    show_max = True
+    show_actual = True
+    show_mean = True
+    marker = "*"
+    alpha = 0.3
+
+    # reward = 1, length = 2, landings = 3
+    stat_idx = 1
+
+    ppo = ppo_csv[:n_episodes, stat_idx]
+    ddpg = ddpg_csv[:n_episodes, stat_idx]
+    sac = sac_csv[:n_episodes, stat_idx]
 
     ppo_mean, ppo_sd = moving_mean_sd(ppo)
     ddpg_mean, ddpg_sd = moving_mean_sd(ddpg)
     sac_mean, sac_sd = moving_mean_sd(sac)
 
-    plt.plot(eps, ppo_mean, label="PPO", color="blue")
-    plt.plot(eps, ppo, color="blue", alpha=0.3)
-    ppo_max = np.argmax(ppo)
-    plt.scatter([ppo_max], [ppo[ppo_max]], marker="*", color="blue")
+    if show_mean:
+        plt.plot(eps, ppo_mean, label="PPO", color="blue")
+    if show_actual:
+        plt.plot(eps, ppo, color="blue", alpha=alpha)
+    if show_max:
+        ppo_max = np.argmax(ppo)
+        print("ppo max", ppo_max, ppo[ppo_max], ppo_csv[ppo_max,2])
+        plt.scatter([ppo_max], [ppo[ppo_max]], marker=marker, color="blue")
 
-    plt.plot(eps, ddpg_mean, label="DDPG", color="green")
-    plt.plot(eps, ddpg, color="green", alpha=0.3)
-    ddpg_max = np.argmax(ddpg)
-    plt.scatter([ddpg_max], [ddpg[ddpg_max]], marker="*", color="green")
+    if show_mean:
+        plt.plot(eps, ddpg_mean, label="DDPG", color="green")
+    if show_actual:
+        plt.plot(eps, ddpg, color="green", alpha=alpha)
+    if show_max:
+        ddpg_max = np.argmax(ddpg)
+        print("ddpg max", ddpg_max, ddpg[ddpg_max], ddpg_csv[ddpg_max,2])
+        plt.scatter([ddpg_max], [ddpg[ddpg_max]], marker=marker, color="green")
 
-    plt.plot(eps, sac_mean, label="SAC", color="red")
-    plt.plot(eps, sac, color="red", alpha=0.3)
-    sac_max = np.argmax(sac)
-    plt.scatter([sac_max], [sac[sac_max]], marker="*", color="red")
+    if show_mean:
+        plt.plot(eps, sac_mean, label="SAC", color="red")
+    if show_actual:
+        plt.plot(eps, sac, color="red", alpha=alpha)
+    if show_max:
+        sac_max = np.argmax(sac)
+        print("SAC max", sac_max, sac[sac_max], sac_csv[sac_max, 2])
+        plt.scatter([sac_max], [sac[sac_max]], marker=marker, color="red")
 
     plt.xlabel("Episode")
-    plt.ylabel("# of successful landings")
+    plt.ylabel("Average episode length")
+    # plt.ylabel("Reward")
+    # plt.ylabel("# of successful landings")
     plt.legend()
-
+    plt.tight_layout()
     plt.show()
 
 
