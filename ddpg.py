@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from gyms import LandingSpacecraftGym, LandingEvaluator, create_normalized_observation
+from gyms import LandingSpacecraftGym, LandingEvaluator, create_normalized_observation, mirror_observation
 from pathlib import Path
 import os
 from common import ReplayBuffer
@@ -145,6 +145,44 @@ def train_landing_agent(
     return highest_avg_reward
 
 
+def test_mirrored_policy():
+    pi = MuNet()
+    pi.load_state_dict(torch.load(Path.cwd() / "ddpg" /
+                       "landing.pt", weights_only=True))
+
+    symmetry = "left"
+
+    def get_action_fn(obs):
+        # Use right side policy on the left side
+        if symmetry == "right":
+            if obs[0] < 0:
+                obs = mirror_observation(obs)
+                action = pi(torch.from_numpy(obs).float()).detach().numpy()
+                action[0] *= -1
+                return action
+            else:
+                return pi(torch.from_numpy(obs).float()).detach().numpy()
+
+        # use left side policy on he right side
+        elif symmetry == "left":
+            if obs[0] > 0:
+                obs = mirror_observation(obs)
+                action = pi(torch.from_numpy(obs).float()).detach().numpy()
+                action[0] *= -1
+                return action
+            else:
+                return pi(torch.from_numpy(obs).float()).detach().numpy()
+        else:
+            return pi(torch.from_numpy(obs).float()).detach().numpy()
+
+    evaluator = LandingEvaluator(discrete_actions=False)
+    evaluator.evaluate(get_action_fn)
+
+    print(evaluator.get_avg_reward())
+    evaluator.save_flight_trajectory_plot(
+        Path.cwd() / "ddpg_mirror_policy.png")
+
+
 def optuna_objective(trial: optuna.Trial):
 
     return -train_landing_agent(
@@ -165,5 +203,6 @@ def find_good_hyperparams():
 
 
 if __name__ == '__main__':
-    train_landing_agent()
+    test_mirrored_policy()
+    # train_landing_agent()
     # find_good_hyperparams()

@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
-from gyms import LandingSpacecraftGym, LandingEvaluator, create_normalized_observation
+from gyms import LandingSpacecraftGym, LandingEvaluator, create_normalized_observation, mirror_observation
 import os
 from pathlib import Path
 import optuna
@@ -207,6 +207,51 @@ def train_landing_agent(learning_rate=0.0005,
     return highest_avg_reward
 
 
+def test_mirrored_policy():
+    ppo = PPO()
+    ppo.load_state_dict(torch.load(
+        Path.cwd() / "ppo" / "landing.pt", weights_only=True))
+
+    action_space = LandingSpacecraftGym().discrete_action_space
+
+    symmetry = "right"
+
+    def get_action_fn(obs):
+        # Use right side policy on the left side
+        if symmetry == "right":
+            if obs[0] < 0:
+                obs = mirror_observation(obs)
+                action = action_space[ppo.pi(torch.from_numpy(
+                    obs).float()).detach().numpy().argmax()]
+                mirrored_action = (action[0] * -1, action[1])
+                for idx, a in enumerate(action_space):
+                    if a == mirrored_action:
+                        return idx
+            else:
+                return ppo.pi(torch.from_numpy(obs).float()).detach().numpy().argmax()
+
+        # use left side policy on he right side
+        elif symmetry == "left":
+            if obs[0] > 0:
+                obs = mirror_observation(obs)
+                action = action_space[ppo.pi(torch.from_numpy(
+                    obs).float()).detach().numpy().argmax()]
+                mirrored_action = (action[0] * -1, action[1])
+                for idx, a in enumerate(action_space):
+                    if a == mirrored_action:
+                        return idx
+            else:
+                return ppo.pi(torch.from_numpy(obs).float()).detach().numpy().argmax()
+        else:
+            return ppo.pi(torch.from_numpy(obs).float()).detach().numpy().argmax()
+
+    evaluator = LandingEvaluator(discrete_actions=True)
+    evaluator.evaluate(get_action_fn)
+
+    print(evaluator.get_avg_reward())
+    evaluator.save_flight_trajectory_plot(Path.cwd() / "ppo_mirrored_policy.png")
+
+
 def optuna_objective(trial: optuna.Trial):
 
     return -train_landing_agent(
@@ -232,4 +277,5 @@ def find_good_hyperparams():
 
 if __name__ == '__main__':
     # find_good_hyperparams()
-    train_landing_agent()
+    # train_landing_agent()
+    test_mirrored_policy()

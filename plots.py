@@ -65,6 +65,7 @@ def create_landing_plots():
     ppo_mean, ppo_sd = moving_mean_sd(ppo)
     ddpg_mean, ddpg_sd = moving_mean_sd(ddpg)
     sac_mean, sac_sd = moving_mean_sd(sac)
+    plt.figure(dpi=300)
 
     if show_mean:
         plt.plot(eps, ppo_mean, label="PPO", color="blue")
@@ -72,7 +73,7 @@ def create_landing_plots():
         plt.plot(eps, ppo, color="blue", alpha=alpha)
     if show_max:
         ppo_max = np.argmax(ppo)
-        print("ppo max", ppo_max, ppo[ppo_max], ppo_csv[ppo_max,2])
+        print("ppo max", ppo_max, ppo[ppo_max], ppo_csv[ppo_max, 2])
         plt.scatter([ppo_max], [ppo[ppo_max]], marker=marker, color="blue")
 
     if show_mean:
@@ -81,7 +82,7 @@ def create_landing_plots():
         plt.plot(eps, ddpg, color="green", alpha=alpha)
     if show_max:
         ddpg_max = np.argmax(ddpg)
-        print("ddpg max", ddpg_max, ddpg[ddpg_max], ddpg_csv[ddpg_max,2])
+        print("ddpg max", ddpg_max, ddpg[ddpg_max], ddpg_csv[ddpg_max, 2])
         plt.scatter([ddpg_max], [ddpg[ddpg_max]], marker=marker, color="green")
 
     if show_mean:
@@ -94,12 +95,13 @@ def create_landing_plots():
         plt.scatter([sac_max], [sac[sac_max]], marker=marker, color="red")
 
     plt.xlabel("Episode")
-    plt.ylabel("Average episode length")
+    plt.ylabel("Reward")
     # plt.ylabel("Reward")
     # plt.ylabel("# of successful landings")
     plt.legend()
     plt.tight_layout()
-    plt.show()
+    # plt.show()
+    plt.savefig("rewards.png")
 
 
 create_landing_plots()

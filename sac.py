@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Normal
 import numpy as np
-from gyms import LandingSpacecraftGym, LandingEvaluator, create_normalized_observation
+from gyms import LandingSpacecraftGym, LandingEvaluator, create_normalized_observation, mirror_observation
 from pathlib import Path
 import os
 from common import ReplayBuffer
@@ -265,6 +265,45 @@ def find_good_hyperparams():
     study.optimize(optuna_objective, n_trials=200)
 
 
+def test_mirrored_policy():
+    pi = PolicyNet()
+    pi.load_state_dict(torch.load(Path.cwd() / "sac" /
+                       "landing.pt", weights_only=True))
+
+    symmetry = "right"
+
+    def get_action_fn(obs):
+        # Use right side policy on the left side
+        if symmetry == "right":
+            if obs[0] < 0:
+                obs = mirror_observation(obs)
+                action = pi(torch.from_numpy(obs).float()).detach().numpy()
+                action[0] *= -1
+                return action
+            else:
+                return pi(torch.from_numpy(obs).float()).detach().numpy()
+
+        # use left side policy on he right side
+        elif symmetry == "left":
+            if obs[0] > 0:
+                obs = mirror_observation(obs)
+                action = pi(torch.from_numpy(obs).float()).detach().numpy()
+                action[0] *= -1
+                return action
+            else:
+                return pi(torch.from_numpy(obs).float()).detach().numpy()
+        else:
+            return pi(torch.from_numpy(obs).float()).detach().numpy()
+
+    evaluator = LandingEvaluator(discrete_actions=False)
+    evaluator.evaluate(get_action_fn)
+
+    print(evaluator.get_avg_reward())
+    evaluator.save_flight_trajectory_plot(
+        Path.cwd() / "sac_mirrored_policy.png")
+
+
 if __name__ == '__main__':
-    train_landing_agent()
+    test_mirrored_policy()
+    # train_landing_agent()
     # find_good_hyperparams()

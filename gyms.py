@@ -50,6 +50,16 @@ def create_normalized_observation(env: Environment, target_point):
     return state
 
 
+def mirror_observation(obs: np.ndarray):
+    new_obs = np.copy(obs)
+    new_obs[0] *= -1
+    new_obs[2] *= -1
+    new_obs[5] *= -1
+    new_obs[6] *= -1
+    new_obs[8] *= -1
+    return new_obs
+
+
 class LandingSpacecraftGym:
 
     def __init__(self, discrete_actions=True):
