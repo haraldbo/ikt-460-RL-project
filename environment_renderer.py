@@ -150,9 +150,11 @@ class Renderer:
             dx2 = np.sign(dx1) * np.random.randint(0, 1 + int(dust_intensity))
             dy = np.sqrt(np.random.randint(0, 1 + int(dust_intensity)))
 
-            pygame.draw.line(self.render_image, color=(160 + np.random.randint(-20, 0), 140 + np.random.randint(-20, 0), 100 + np.random.randint(-20, 0)),
+            line_width = 1 + np.random.randint(0, 1 + int(dust_intensity/15))
+
+            pygame.draw.line(self.render_image, color=(150 + np.random.randint(-20, 0), 130 + np.random.randint(-20, 0), 90 + np.random.randint(-20, 0)),
                              start_pos=(x_dest+dx1, y_dest),
-                             end_pos=(x_dest+dx1+dx2, y_dest - dy), width=1)
+                             end_pos=(x_dest+dx1+dx2, y_dest - dy), width=line_width)
 
         if Settings.RENDERING_SPACECRAFT_DEBUGGING:
             x, y = (env.position[0] + np.cos(-np.pi/2 + env.angle) * env.d_engine_com,
@@ -175,6 +177,8 @@ class Renderer:
         x_dest = x - self.left
         y_dest = env.map.height - y - self.top
 
+        y_max_jet = env.map.height - 10 - self.top
+
         for i in range(np.random.randint(5, 20)):
             flame_start = (x_dest + radius * np.cos(-np.pi/2 + env.angle),
                            y_dest - radius * np.sin(-np.pi/2 + env.angle))
@@ -193,7 +197,7 @@ class Renderer:
 
             spray = min(np.ceil(env.thrust_level), 3)
             dest = [flame_end[0] + np.random.randint(-spray, spray),
-                    flame_end[1] + np.random.randint(-spray, spray)]
+                    min(flame_end[1] + np.random.randint(-spray, spray), y_max_jet)]
 
             jet_width = int(1 + 3 * env.thrust_level/env.MAX_THRUST_LEVEL)
             pygame.draw.line(self.render_image, color,
