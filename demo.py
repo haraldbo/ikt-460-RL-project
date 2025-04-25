@@ -6,6 +6,7 @@ from copy import copy
 from ppo import LandingAgent as PPOLandingAgent
 from sac import LandingAgent as SACLandingAgent
 from ddpg import LandingAgent as DDPGLandingAgent
+from gyms import LandingSpacecraftGym
 
 
 class Mode:
@@ -22,75 +23,24 @@ class KEY_BINDINGS:
     UP = pygame.K_UP
 
 
-class SpacecraftCommander:
+class LandingAgent:
 
-    def __init__(self, hovering_agent, landing_agent, hovering_point, landing_point, mode=Mode.HOVERING):
-        self.mode = mode
-        self.landing_agent = landing_agent
-        self.hovering_agent = hovering_agent
-        self.init_hovering_point = hovering_point
-        self.init_landing_point = landing_point
-        self.key_down_map = {
-            KEY_BINDINGS.LANDING: False,
-            KEY_BINDINGS.HOVERING: False,
-            KEY_BINDINGS.RIGHT: False,
-            KEY_BINDINGS.DOWN: False,
-            KEY_BINDINGS.LEFT: False,
-            KEY_BINDINGS.UP: False,
-        }
-        self.point_change_amount = 5
-        self.reset()
+    def __init__(self):
+        pass
 
-    def reset(self):
-        self.landing_point = self.init_landing_point
-        self.hovering_point = self.init_hovering_point
-        self.mode = Mode.HOVERING
-
-    def set_landing_mode(self):
-        self.mode = Mode.LANDING
-
-    def set_hovering_mode(self):
-        self.mode = Mode.HOVERING
-
-    def update_key_map(self, key, down):
-        self.key_down_map[key] = down
-
-    def tick(self):
-        if self.mode != Mode.HOVERING and self.key_down_map[KEY_BINDINGS.HOVERING]:
-            self.set_hovering_mode()
-        elif self.mode != Mode.LANDING and self.key_down_map[KEY_BINDINGS.LANDING]:
-            self.set_landing_mode()
-
-        if self.mode == Mode.HOVERING:
-            if self.key_down_map[KEY_BINDINGS.LEFT]:
-                self.hovering_point = (
-                    self.hovering_point[0] - self.point_change_amount, self.hovering_point[1])
-            if self.key_down_map[KEY_BINDINGS.RIGHT]:
-                self.hovering_point = (
-                    self.hovering_point[0] + self.point_change_amount, self.hovering_point[1])
-            if self.key_down_map[KEY_BINDINGS.UP]:
-                self.hovering_point = (
-                    self.hovering_point[0], self.hovering_point[1] + self.point_change_amount)
-            if self.key_down_map[KEY_BINDINGS.DOWN]:
-                self.hovering_point = (
-                    self.hovering_point[0], self.hovering_point[1] - self.point_change_amount)
-
-    def get_action(self, environment: Environment):
-        if self.mode == Mode.HOVERING:
-            return self.hovering_agent.get_action(environment, self.hovering_point)
-        else:
-            return self.landing_agent.get_action(environment, self.landing_point)
+    def get_action(self, env, target):
+        pass
 
 
-def test_flight(commander: SpacecraftCommander, init_env: Environment):
+def test_landing_agent(landing_agent: LandingAgent, landing_gym: LandingSpacecraftGym):
     clock = pygame.time.Clock()
     pygame.init()
     pygame.font.init()
-    env = copy(init_env)
     window = pygame.display.set_mode(Settings.SIMULATION_FRAME_SIZE)
     pygame.display.set_caption("Spacecraft control")
     renderer = Renderer()
-
+    reward_sum = 0
+    done = False
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -98,27 +48,35 @@ def test_flight(commander: SpacecraftCommander, init_env: Environment):
                 exit(0)
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
-                    commander.reset()
-                    env = copy(init_env)
-                elif event.key == pygame.K_l:
-                    commander.set_landing_mode()
+                    done = False
+                    reward_sum = 0
+                    landing_gym.reset()
 
-                commander.update_key_map(event.key, down=True)
-            if event.type == pygame.KEYUP:
-                commander.update_key_map(event.key, down=False)
-
-        commander.tick()
-        render_img = renderer.render(env)
+        render_img = renderer.render(landing_gym.env)
 
         window_img = pygame.transform.scale(render_img, window.get_size())
 
         if Settings.RENDER_SPACECRAFT_INFORMATION:
-            renderer.render_spacecraft_information(env, window_img)
+            renderer.render_spacecraft_information(
+                landing_gym.env,
+                window_img,
+                extras={
+                    "Steps": landing_gym.env.steps,
+                    "Return": round(reward_sum, 2)
+                }
+            )
 
         window.blit(window_img, dest=(0, 0))
 
-        action = commander.get_action(env)
-        env.step(action)
+        if not done:
+            action = landing_agent.get_action(
+                landing_gym.env, landing_gym.landing_area)
+
+            obs, reward, flight_ended, truncated, info = landing_gym.step(
+                action)
+
+            done = truncated or flight_ended
+            reward_sum += reward
 
         clock.tick(Settings.SIMULATION_FPS)
 
@@ -126,15 +84,9 @@ def test_flight(commander: SpacecraftCommander, init_env: Environment):
 
 
 if __name__ == "__main__":
-    init_env = Environment()
-    init_env.position = (init_env.map.width//2 + 150, init_env.map.height-50)
-    spacecraft_commander = SpacecraftCommander(
-        landing_agent=PPOLandingAgent(),
-        hovering_agent=SACLandingAgent(),
-        landing_point=(init_env.map.width//2, 10),
-        hovering_point=(init_env.map.width//2, init_env.map.height//2)
-    )
+    landing_gym = LandingSpacecraftGym(
+        discrete_actions=False, relaxed_constraints=True)
 
-    spacecraft_commander.set_landing_mode()
+    landing_agent = SACLandingAgent()
 
-    test_flight(spacecraft_commander, init_env)
+    test_landing_agent(landing_agent, landing_gym)

@@ -203,7 +203,7 @@ class Renderer:
             pygame.draw.line(self.render_image, color,
                              src, dest, width=jet_width)
 
-    def render_spacecraft_information(self, environment: Environment, surface: Surface):
+    def render_spacecraft_information(self, environment: Environment, surface: Surface, extras):
         """
         Renders spacecraft information onto the surface
         """
@@ -214,7 +214,8 @@ class Renderer:
             "Angle": round(environment.angle, 3),
             "Angular Velocity":  round(environment.angular_velocity, 3),
             "Thrust":  round(environment.thrust_level, 3),
-            "Gimbal":  round(environment.gimbal_level, 3)
+            "Gimbal":  round(environment.gimbal_level, 3),
+            **extras
         }
 
         y_loc = 0

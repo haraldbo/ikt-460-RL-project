@@ -62,7 +62,7 @@ def mirror_observation(obs: np.ndarray):
 
 class LandingSpacecraftGym:
 
-    def __init__(self, discrete_actions=True):
+    def __init__(self, discrete_actions=True, relaxed_constraints = False):
         self.env = Environment(time_step_size=Settings.TIME_STEP_SIZE)
 
         self.discrete_actions = discrete_actions
@@ -80,6 +80,15 @@ class LandingSpacecraftGym:
         self.landing_area = (self.env.map.width//2, 10)
         self.target_point = (
             self.landing_area[0], self.landing_area[1] + self.env.height//2)
+        if relaxed_constraints:
+            self.landing_velocity = 5
+            self.landing_angular_velocity = 0.5
+            self.landing_angle = 0.5
+        else:
+            self.landing_velocity = 1
+            self.landing_angular_velocity = 0.1
+            self.landing_angle = 0.1
+        
         self.reset()
 
     def step(self, action_input):
@@ -94,9 +103,9 @@ class LandingSpacecraftGym:
         y_distance_to_landing = np.fabs(
             self.env.position[1] - self.target_point[1])
 
-        max_accepted_velocity = 1 + y_distance_to_landing/100 * 10
-        max_accepted_angular_velocity = 0.1 + y_distance_to_landing/100 * 0.5
-        max_accepted_angle = 0.1 + y_distance_to_landing/100 * 0.5
+        max_accepted_velocity = self.landing_velocity + y_distance_to_landing/100 * 10
+        max_accepted_angular_velocity = self.landing_angular_velocity + y_distance_to_landing/100 * 0.5
+        max_accepted_angle = self.landing_angle + y_distance_to_landing/100 * 0.5
 
         terminated = False
         has_landed = False
