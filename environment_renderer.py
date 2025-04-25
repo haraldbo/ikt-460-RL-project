@@ -3,6 +3,7 @@ from pygame import Surface
 import pygame
 import numpy as np
 from common import Settings
+from collections import deque
 
 
 class Colors:
@@ -19,6 +20,7 @@ class Renderer:
         self.top = 0
         self.left = 0
         self.font = pygame.font.SysFont("", size=16)
+        self.dust = deque(maxlen=20)
 
     def _tile_to_color(self, tile: MapTile):
         if tile == MapTile.AIR:
@@ -88,11 +90,58 @@ class Renderer:
                 pygame.draw.circle(self.render_image, color=(
                     0, 0, 255), center=(x - self.left, env.map.height - y - self.top), radius=1)
 
+    def _add_dust(self, env: Environment):
+        engine_angle = -np.pi/2 - env.get_engine_local_angle() + env.angle
+        engine_location = (env.position[0] + np.cos(-np.pi/2 + env.angle) * env.d_engine_com,
+                           env.position[1] + np.sin(-np.pi/2 + env.angle) * env.d_engine_com)
+
+        dx = np.cos(engine_angle)
+        dy = np.sin(engine_angle)
+
+        if dy >= -0.001:
+            return
+
+        m = (10 - engine_location[1])/dy
+
+        dust_x = env.position[0] + m * dx
+        dust_location = (dust_x, 10)
+
+        intensity = np.fabs((100 * env.thrust_level) /
+                            (np.fabs(10 - engine_location[1]) + 1))
+
+        self.dust.appendleft((intensity, dust_location))
+
+    def _render_dust(self, env: Environment):
+        self._add_dust(env)
+
+        dust_intensity, dust_location = self.dust.pop()
+        x, y = dust_location
+        x_dest = x - self.left
+        y_dest = env.map.height - y - self.top
+
+        for y in range(int(dust_intensity * 2)):
+            dx1 = np.random.randint(-10, 10)
+            dx2 = np.sign(dx1) * np.random.randint(0, 1 + int(dust_intensity))
+            dy = np.sqrt(np.random.randint(0, 1 + int(dust_intensity)))
+
+            pygame.draw.line(self.render_image, color=(160 + np.random.randint(-20, 0), 140 + np.random.randint(-20, 0), 100 + np.random.randint(-20, 0)),
+                             start_pos=(x_dest+dx1, y_dest),
+                             end_pos=(x_dest+dx1+dx2, y_dest - dy), width=1)
+
+        if Settings.RENDERING_SPACECRAFT_DEBUGGING:
+            x, y = (env.position[0] + np.cos(-np.pi/2 + env.angle) * env.d_engine_com,
+                    env.position[1] + np.sin(-np.pi/2 + env.angle) * env.d_engine_com)
+            x_dest = x - self.left
+            y_dest = env.map.height - y - self.top
+
+            pygame.draw.circle(self.render_image, color=(
+                255, 0, 0), center=(x_dest, y_dest), radius=2)
+
     def _render_jet(self, env: Environment):
         # TODO: Check if has collided with solid
         if env.thrust_level == 0:
             return
-        
+
         engine_angle = -np.pi/2 - env.get_engine_local_angle() + env.angle
         radius = max(14, 8 + env.thrust_level)
 
@@ -103,7 +152,8 @@ class Renderer:
         for i in range(np.random.randint(5, 20)):
             flame_start = (x_dest + radius * np.cos(-np.pi/2 + env.angle),
                            y_dest - radius * np.sin(-np.pi/2 + env.angle))
-            flame_length = int(np.random.randint(10, 40) + env.thrust_level * 2)
+            flame_length = int(np.random.randint(
+                10, 40) + env.thrust_level * 2)
             flame_end = (flame_start[0] + np.cos(engine_angle) * flame_length,
                          flame_start[1] - np.sin(engine_angle) * flame_length
                          )
@@ -156,5 +206,6 @@ class Renderer:
         self._render_map(environment)
         self._render_jet(environment)
         self._render_spacecraft(environment)
+        self._render_dust(environment)
 
         return self.render_image
