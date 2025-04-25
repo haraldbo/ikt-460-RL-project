@@ -90,6 +90,32 @@ class Renderer:
                 pygame.draw.circle(self.render_image, color=(
                     0, 0, 255), center=(x - self.left, env.map.height - y - self.top), radius=1)
 
+    def _render_landing_area(self, env: Environment):
+        landing_area = (env.map.width//2, 10)
+        x, y = landing_area
+        x_dest = x - self.left
+        y_dest = env.map.height - y - self.top
+
+        radius = 50
+
+        pole_height = 30
+        flag_height = 10
+        flag_width = 7
+
+        for r in [-radius, radius]:
+            pole_start = (x_dest + r, y_dest)
+            pole_end = (x_dest + r, y_dest - pole_height)
+            pygame.draw.line(self.render_image, color=(
+                255, 255, 255), start_pos=pole_start, end_pos=pole_end)
+
+            flag_points = [
+                (pole_end[0], pole_end[1]),
+                (pole_end[0], pole_end[1] + flag_height),
+                (pole_end[0] + flag_width, pole_end[1] + flag_height//2)
+            ]
+            pygame.draw.polygon(self.render_image, color=(
+                200, 200, 0), points=flag_points)
+
     def _add_dust(self, env: Environment):
         engine_angle = -np.pi/2 - env.get_engine_local_angle() + env.angle
         engine_location = (env.position[0] + np.cos(-np.pi/2 + env.angle) * env.d_engine_com,
@@ -206,6 +232,7 @@ class Renderer:
         self._render_map(environment)
         self._render_jet(environment)
         self._render_spacecraft(environment)
+        self._render_landing_area(environment)
         self._render_dust(environment)
 
         return self.render_image
