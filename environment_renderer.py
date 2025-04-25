@@ -140,6 +140,9 @@ class Renderer:
     def _render_dust(self, env: Environment):
         self._add_dust(env)
 
+        if len(self.dust) == 0:
+            return
+
         dust_intensity, dust_location = self.dust.pop()
         x, y = dust_location
         x_dest = x - self.left
