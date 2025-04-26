@@ -128,7 +128,7 @@ def train_landing_agent(learning_rate=0.0005,
                         eval_freq=1,
                         verbose=True,
                         reward_scale=20,
-                        # alpha to linearly decrease clipping
+                        # alpha to linearly decrease clipping (disabled atm)
                         alpha_start=1,
                         alpha_end=0.25,
                         alpha_episodes=3_000

@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 from pathlib import Path
 import numpy as np
+import os
+from PIL import Image, ImageDraw, ImageFont
 
 
 def moving_mean_sd(values: np.ndarray, width=100):
@@ -30,14 +32,6 @@ def open_eval_csv(path):
             contentz.append((ep, reward, length, landings))
 
     return np.array(contentz)
-
-
-def create_length_plots():
-    pass
-
-
-def create_reward_plots():
-    pass
 
 
 def create_landing_plots():
@@ -104,4 +98,31 @@ def create_landing_plots():
     plt.savefig("rewards.png")
 
 
-create_landing_plots()
+def create_evolution_plot(trajectory_directory, interval=15, width=6, height=10):
+    files = os.listdir(trajectory_directory)
+    img1 = Image.open(trajectory_directory / files[0])
+    small_size = img1.size
+    big_image = Image.new("RGB", (width * img1.width, height * img1.height))
+    font = ImageFont.load_default(48)
+    for y in range(height):
+        for x in range(width):
+            i = x + y * width
+            small_image = Image.open(
+                trajectory_directory / files[i * interval])
+            draw = ImageDraw.Draw(small_image)
+            text = f"Episode {i*interval+1}"
+            text_length = draw.textlength(text, font)
+            draw.text(xy=(small_image.width//2 - text_length//2, 20),
+                      text=text, fill=(0, 0, 0), font=font)
+            draw.rectangle((473, 18, 473 + 150, 18 + 43), fill=(255, 255, 255))
+            big_image.paste(
+                small_image,
+                (x * small_size[0], y * small_size[1])
+            )
+    big_image.show()
+
+
+create_evolution_plot(Path.cwd() / "sac" / "trajectories")
+
+
+# create_landing_plots()
