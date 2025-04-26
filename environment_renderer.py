@@ -19,7 +19,7 @@ class Renderer:
         self.render_image = None
         self.top = 0
         self.left = 0
-        self.font = pygame.font.SysFont("", size=16)
+        self.font = pygame.font.SysFont("", size=24)
         self.dust = deque(maxlen=20)
 
     def _tile_to_color(self, tile: MapTile):

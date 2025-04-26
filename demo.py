@@ -7,6 +7,7 @@ from ppo import LandingAgent as PPOLandingAgent
 from sac import LandingAgent as SACLandingAgent
 from ddpg import LandingAgent as DDPGLandingAgent
 from gyms import LandingSpacecraftGym
+import numpy as np
 
 
 class Mode:
@@ -32,6 +33,15 @@ class LandingAgent:
         pass
 
 
+class RandomActionAgent(LandingAgent):
+
+    def __init__(self):
+        pass
+
+    def get_action(self, env, target):
+        return [np.random.uniform(-1, 1), np.random.uniform(-1, 1)]
+
+
 def test_landing_agent(landing_agent: LandingAgent, landing_gym: LandingSpacecraftGym):
     clock = pygame.time.Clock()
     pygame.init()
@@ -39,7 +49,6 @@ def test_landing_agent(landing_agent: LandingAgent, landing_gym: LandingSpacecra
     window = pygame.display.set_mode(Settings.SIMULATION_FRAME_SIZE)
     pygame.display.set_caption("Spacecraft control")
     renderer = Renderer()
-    reward_sum = 0
     done = False
     while True:
         for event in pygame.event.get():
@@ -49,7 +58,6 @@ def test_landing_agent(landing_agent: LandingAgent, landing_gym: LandingSpacecra
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
                     done = False
-                    reward_sum = 0
                     landing_gym.reset()
 
         render_img = renderer.render(landing_gym.env)
@@ -60,10 +68,7 @@ def test_landing_agent(landing_agent: LandingAgent, landing_gym: LandingSpacecra
             renderer.render_spacecraft_information(
                 landing_gym.env,
                 window_img,
-                extras={
-                    "Steps": landing_gym.env.steps,
-                    "Return": round(reward_sum, 2)
-                }
+                extras={}
             )
 
         window.blit(window_img, dest=(0, 0))
@@ -76,7 +81,6 @@ def test_landing_agent(landing_agent: LandingAgent, landing_gym: LandingSpacecra
                 action)
 
             done = truncated or flight_ended
-            reward_sum += reward
 
         clock.tick(Settings.SIMULATION_FPS)
 
@@ -87,6 +91,7 @@ if __name__ == "__main__":
     landing_gym = LandingSpacecraftGym(
         discrete_actions=False, relaxed_constraints=True)
 
+    landing_agent = RandomActionAgent()
     landing_agent = SACLandingAgent()
 
     test_landing_agent(landing_agent, landing_gym)
