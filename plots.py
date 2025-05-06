@@ -3,6 +3,8 @@ from pathlib import Path
 import numpy as np
 import os
 from PIL import Image, ImageDraw, ImageFont
+import cv2
+from tqdm import tqdm
 
 
 def moving_mean_sd(values: np.ndarray, width=100):
@@ -98,6 +100,32 @@ def create_landing_plots():
     plt.savefig("rewards.png")
 
 
+def create_evolution_movie(trajectory_directory):
+    width = 640
+    height = 480
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fps = 10
+    video = cv2.VideoWriter('video.avi', fourcc, fps, (width, height))
+    n_frames = 1000
+    font = ImageFont.load_default(24)
+
+    for i, file_name in enumerate(tqdm(os.listdir(trajectory_directory), desc="Creating demo")):
+        img = Image.open(trajectory_directory / file_name)
+        img = img.resize((640, 480))
+        draw = ImageDraw.Draw(img)
+        text = f"Episode {i}"
+        text_length = draw.textlength(text, font=font)
+
+        draw.text((img.width//2-text_length//2, 12),
+                  text=text, font=font, fill=(0, 0, 0))
+        cv_img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+        video.write(cv_img)
+        if i == n_frames:
+            break
+
+    video.release()
+
+
 def create_evolution_plot(trajectory_directory, interval=15, width=6, height=10):
     files = os.listdir(trajectory_directory)
     img1 = Image.open(trajectory_directory / files[0])
@@ -120,9 +148,10 @@ def create_evolution_plot(trajectory_directory, interval=15, width=6, height=10)
                 (x * small_size[0], y * small_size[1])
             )
     big_image.show()
+    big_image.save("sac_evolution.png")
 
 
-create_evolution_plot(Path.cwd() / "sac" / "trajectories")
+# create_evolution_plot(Path.cwd() / "sac" / "trajectories")
 
-
+create_evolution_movie(Path.cwd() / "sac" / "trajectories")
 # create_landing_plots()
