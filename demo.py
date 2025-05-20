@@ -42,6 +42,36 @@ class RandomActionAgent(LandingAgent):
         return [np.random.uniform(-1, 1), np.random.uniform(-1, 1)]
 
 
+class HumanControlledLandingAgent(LandingAgent):
+
+    def __init__(self):
+        self.gimbal_action = 0
+        self.thrust_action = 0
+        super().__init__()
+
+    def register_key_down(self, key):
+        pass
+
+    def register_key_up(self, key):
+        if key == pygame.K_UP:
+            self.thrust_action = 1
+
+        if key == pygame.K_DOWN:
+            self.thrust_action = -1
+
+        if key == pygame.K_LEFT:
+            self.gimbal_action = 1
+
+        if key == pygame.K_RIGHT:
+            self.gimbal_action = -1
+
+    def get_action(self, env, target):
+        action = [self.gimbal_action, self.thrust_action]
+        self.gimbal_action = 0
+        self.thrust_action = 0
+        return action
+
+
 def test_landing_agent(landing_agent: LandingAgent, landing_gym: LandingSpacecraftGym):
     clock = pygame.time.Clock()
     pygame.init()
@@ -56,9 +86,14 @@ def test_landing_agent(landing_agent: LandingAgent, landing_gym: LandingSpacecra
                 print("Exiting")
                 exit(0)
             if event.type == pygame.KEYDOWN:
+                if type(landing_agent) == HumanControlledLandingAgent:
+                    landing_agent.register_key_down(event.key)
                 if event.key == pygame.K_SPACE:
                     done = False
                     landing_gym.reset()
+            elif event.type == pygame.KEYUP:
+                if type(landing_agent) == HumanControlledLandingAgent:
+                    landing_agent.register_key_up(event.key)
 
         render_img = renderer.render(landing_gym.env)
 
@@ -91,6 +126,9 @@ if __name__ == "__main__":
     landing_gym = LandingSpacecraftGym(
         discrete_actions=False, relaxed_constraints=True)
 
+    landing_agent = HumanControlledLandingAgent()
+    landing_agent = PPOLandingAgent()
+    landing_agent = DDPGLandingAgent()
     landing_agent = RandomActionAgent()
     landing_agent = SACLandingAgent()
 
