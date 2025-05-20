@@ -1,5 +1,9 @@
 # IKT-460-RL-project: Autonomous Spacecraft landing using reinforcement learning
 
+
+https://github.com/user-attachments/assets/b2410268-5904-48e2-b71f-c022ae51a717
+
+
 ### Contents
 * [ppo.py](./ppo.py), [sac.py](./sac.py) and [ddpg.py](./ddpg.py): Train landing agent++
 * [spacecraft.py](./spacecraft.py): The physics, and stuff, of the spacecraft
@@ -16,4 +20,4 @@
 - optuna
 
 ### Acknowledgements
-I woud like to thank Seungeun Rho for his minimalistic implementation of SAC, DDPG and PPO (https://github.com/seungeunrho/minimalRL). I used these implementations as a starting point, and found them to be easy to understand and adapt to my project. Awesome stuff!
+I woud like to thank Seungeun Rho for his minimalistic implementation of SAC, DDPG and PPO (https://github.com/seungeunrho/minimalRL). I used these implementations as a starting point, and found them to be easy to understand and adapt to my project. Awesome!
